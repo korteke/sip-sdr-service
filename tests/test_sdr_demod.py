@@ -235,24 +235,77 @@ class FmSquelchTests(unittest.TestCase):
         audio = demod.process(iq)
         np.testing.assert_array_equal(audio, np.zeros_like(audio))
 
-    def test_hang_time_keeps_audio_briefly_after_signal_drops(self):
+    def test_hang_time_keeps_squelch_open_until_hang_budget_expires(self):
+        # Use true (exact-zero) silence chunks, fed as several successive
+        # process() calls, so the channel filter's FIR tail from the
+        # preceding strong signal fully decays within the first chunk or
+        # two -- confirmed empirically: with squelch_hang_ms effectively
+        # disabled (0.001ms -> 0 hang samples), squelch closes after just
+        # one 5ms silence chunk, proving the *measured* power alone (not
+        # any lingering filter transient) already reads below squelch_db
+        # from then on. So if hang time is working, staying open across
+        # many more such chunks can only be due to the hang mechanism.
+        # With squelch_hang_ms=100 (hang budget = 3200 intermediate-rate
+        # samples), squelch should stay open through 75ms of true silence
+        # and only close once 125ms of true silence has elapsed, exceeding
+        # the 100ms budget.
         raw_iq_rate_hz = 128000.0
         stage1, stage2 = 4, 4
         n_signal = int(raw_iq_rate_hz * 0.02)
-        n_silence = int(raw_iq_rate_hz * 0.02)
         t_signal = np.arange(n_signal) / raw_iq_rate_hz
         signal = np.exp(1j * 2 * np.pi * 1000 * t_signal)
-        silence = np.full(n_silence, 1e-6, dtype=np.complex128)
+        silence_chunk = np.zeros(int(raw_iq_rate_hz * 0.005), dtype=np.complex128)  # 5ms
 
         demod = MODULE.FmStreamingDemodulator(
             16000, raw_iq_rate_hz, stage1, stage2, squelch_db=-20, squelch_hang_ms=100,
         )
         demod.process(signal)
-        audio_during_hang = demod.process(silence)
-        # hang time (100ms) exceeds the silence chunk's duration (20ms), so
-        # squelch should still be open immediately after signal disappears.
-        self.assertTrue(demod.squelch_open)
-        self.assertTrue(np.any(audio_during_hang != 0.0))
+
+        for _ in range(15):  # 75ms of true silence: well within the 100ms hang budget
+            demod.process(silence_chunk)
+        self.assertTrue(
+            demod.squelch_open,
+            "squelch closed before the hang budget was exhausted",
+        )
+
+        for _ in range(10):  # 50ms more: 125ms total, past the 100ms hang budget
+            demod.process(silence_chunk)
+        self.assertFalse(
+            demod.squelch_open,
+            "squelch never closed once the hang budget ran out",
+        )
+
+    def test_long_hang_keeps_squelch_open_longer_than_short_hang(self):
+        # Directly compare two demodulators fed the identical signal-then-
+        # true-silence sequence, differing only in squelch_hang_ms. If hang
+        # time were broken or absent, both instances would close at the
+        # same instant, since they'd be reacting to the same measured
+        # power. The real mechanism keeps the long-hang instance open long
+        # after the short-hang instance (hang_samples=0) has already
+        # closed -- verified empirically: short_hang closes after the first
+        # 5ms silence chunk, long_hang stays open through at least 19 more.
+        raw_iq_rate_hz = 128000.0
+        stage1, stage2 = 4, 4
+        n_signal = int(raw_iq_rate_hz * 0.02)
+        t_signal = np.arange(n_signal) / raw_iq_rate_hz
+        signal = np.exp(1j * 2 * np.pi * 1000 * t_signal)
+        silence_chunk = np.zeros(int(raw_iq_rate_hz * 0.005), dtype=np.complex128)  # 5ms
+
+        long_hang = MODULE.FmStreamingDemodulator(
+            16000, raw_iq_rate_hz, stage1, stage2, squelch_db=-20, squelch_hang_ms=100,
+        )
+        short_hang = MODULE.FmStreamingDemodulator(
+            16000, raw_iq_rate_hz, stage1, stage2, squelch_db=-20, squelch_hang_ms=0.001,
+        )
+        long_hang.process(signal)
+        short_hang.process(signal)
+
+        for _ in range(5):  # 25ms of true silence
+            long_hang.process(silence_chunk)
+            short_hang.process(silence_chunk)
+
+        self.assertTrue(long_hang.squelch_open)
+        self.assertFalse(short_hang.squelch_open)
 
 
 class StreamingDemodulatorTests(unittest.TestCase):
