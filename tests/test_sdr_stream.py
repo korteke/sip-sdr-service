@@ -53,6 +53,38 @@ class LoadConfigTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 MODULE.load_config()
 
+    def test_nfm_mode_defaults(self):
+        with patch.dict(os.environ, {"SDR_MODE": "nfm"}, clear=True):
+            config = MODULE.load_config()
+        self.assertEqual(config["mode"], "nfm")
+        self.assertEqual(config["deviation_hz"], 5000.0)
+        self.assertEqual(config["channel_bandwidth_hz"], 16000.0)
+        self.assertIsNone(config["squelch_db"])
+        self.assertEqual(config["squelch_hang_ms"], 200.0)
+        self.assertIsNone(config["deemphasis_us"])
+        self.assertNotIn("low_cut_hz", config)
+
+    def test_nfm_mode_reads_squelch_and_deemphasis(self):
+        environment = {
+            "SDR_MODE": "nfm",
+            "SDR_SQUELCH_DB": "-18",
+            "SDR_FM_DEEMPHASIS_US": "6000",
+        }
+        with patch.dict(os.environ, environment, clear=True):
+            config = MODULE.load_config()
+        self.assertEqual(config["squelch_db"], -18.0)
+        self.assertEqual(config["deemphasis_us"], 6000.0)
+
+    def test_nfm_non_positive_deviation_is_rejected(self):
+        with patch.dict(os.environ, {"SDR_MODE": "nfm", "SDR_FM_DEVIATION_HZ": "0"}, clear=True):
+            with self.assertRaises(ValueError):
+                MODULE.load_config()
+
+    def test_nfm_non_positive_channel_bandwidth_is_rejected(self):
+        with patch.dict(os.environ, {"SDR_MODE": "nfm", "SDR_FM_CHANNEL_BANDWIDTH_HZ": "0"}, clear=True):
+            with self.assertRaises(ValueError):
+                MODULE.load_config()
+
 
 class BufferTests(unittest.TestCase):
     def test_buffer_below_ceiling_is_unchanged(self):

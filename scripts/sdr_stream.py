@@ -24,7 +24,8 @@ STATUS_PATH = Path("/run/sip-sdr/stream.json")
 READ_CHUNK_SAMPLES = 4096
 
 DRIVER_CHOICES = {"sdrplay", "rtlsdr", "plutosdr"}
-MODE_CHOICES = {"lsb", "usb", "auto"}
+MODE_CHOICES = {"lsb", "usb", "auto", "nfm"}
+SSB_MODES = {"lsb", "usb"}
 
 
 def load_config():
@@ -36,31 +37,59 @@ def load_config():
         raise ValueError("SDR_FREQUENCY_KHZ must be positive")
 
     mode_setting = env_choice("SDR_MODE", "lsb", MODE_CHOICES)
-    mode = sdr_demod.resolve_mode(mode_setting, frequency_khz)
-
-    low_cut_hz = env_float("SDR_LOW_CUT_HZ", -2700)
-    high_cut_hz = env_float("SDR_HIGH_CUT_HZ", -300)
-    if abs(low_cut_hz) == abs(high_cut_hz):
-        raise ValueError("SDR_LOW_CUT_HZ and SDR_HIGH_CUT_HZ must have different magnitudes")
-    magnitude_low = min(abs(low_cut_hz), abs(high_cut_hz))
-    magnitude_high = max(abs(low_cut_hz), abs(high_cut_hz))
-    if mode == "lsb":
-        passband_low_hz, passband_high_hz = -magnitude_high, -magnitude_low
-    else:
-        passband_low_hz, passband_high_hz = magnitude_low, magnitude_high
+    mode = mode_setting if mode_setting == "nfm" else sdr_demod.resolve_mode(mode_setting, frequency_khz)
 
     backend_config = backend.load_backend_config()
 
-    return {
+    config = {
         "driver": driver,
         "backend": backend,
         "frequency_khz": frequency_khz,
         "mode_setting": mode_setting,
         "mode": mode,
-        "low_cut_hz": passband_low_hz,
-        "high_cut_hz": passband_high_hz,
         "backend_config": backend_config,
     }
+
+    if mode in SSB_MODES:
+        low_cut_hz = env_float("SDR_LOW_CUT_HZ", -2700)
+        high_cut_hz = env_float("SDR_HIGH_CUT_HZ", -300)
+        if abs(low_cut_hz) == abs(high_cut_hz):
+            raise ValueError("SDR_LOW_CUT_HZ and SDR_HIGH_CUT_HZ must have different magnitudes")
+        magnitude_low = min(abs(low_cut_hz), abs(high_cut_hz))
+        magnitude_high = max(abs(low_cut_hz), abs(high_cut_hz))
+        if mode == "lsb":
+            config["low_cut_hz"], config["high_cut_hz"] = -magnitude_high, -magnitude_low
+        else:
+            config["low_cut_hz"], config["high_cut_hz"] = magnitude_low, magnitude_high
+    else:
+        deviation_hz = env_float("SDR_FM_DEVIATION_HZ", 5000)
+        channel_bandwidth_hz = env_float("SDR_FM_CHANNEL_BANDWIDTH_HZ", 16000)
+        if deviation_hz <= 0:
+            raise ValueError("SDR_FM_DEVIATION_HZ must be positive")
+        if channel_bandwidth_hz <= 0:
+            raise ValueError("SDR_FM_CHANNEL_BANDWIDTH_HZ must be positive")
+
+        squelch_setting = os.environ.get("SDR_SQUELCH_DB", "").strip()
+        squelch_db = float(squelch_setting) if squelch_setting else None
+
+        squelch_hang_ms = env_float("SDR_SQUELCH_HANG_MS", 200)
+        if squelch_hang_ms <= 0:
+            raise ValueError("SDR_SQUELCH_HANG_MS must be positive")
+
+        deemphasis_setting = os.environ.get("SDR_FM_DEEMPHASIS_US", "").strip()
+        deemphasis_us = float(deemphasis_setting) if deemphasis_setting else None
+        if deemphasis_us is not None and deemphasis_us <= 0:
+            raise ValueError("SDR_FM_DEEMPHASIS_US must be positive")
+
+        config.update({
+            "deviation_hz": deviation_hz,
+            "channel_bandwidth_hz": channel_bandwidth_hz,
+            "squelch_db": squelch_db,
+            "squelch_hang_ms": squelch_hang_ms,
+            "deemphasis_us": deemphasis_us,
+        })
+
+    return config
 
 
 def milliseconds_to_bytes(milliseconds):
