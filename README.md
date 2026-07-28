@@ -88,8 +88,9 @@ if you like, the rule filename).
 
 ### PlutoSDR
 
-No proprietary installer needed — the `soapysdr0.8-module-plutosdr`
-package handles it. PlutoSDR commonly connects either as a USB device
+No proprietary installer needed — the Dockerfile builds the SoapySDR
+PlutoSDR module from source automatically (Ubuntu doesn't package it).
+PlutoSDR commonly connects either as a USB device
 (needing the same udev/`SDR_DEVICE` treatment as above) or over its
 default network interface (`ip:192.168.2.1`, no USB device node at all).
 If you're using the network connection, the `devices:` entry in

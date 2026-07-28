@@ -13,27 +13,57 @@ RUN apt-get update \
         python3-scipy \
         python3-soapysdr \
         soapysdr-tools \
-        soapysdr0.8-module-sdrplay3 \
         soapysdr0.8-module-rtlsdr \
-        soapysdr0.8-module-plutosdr \
         udev \
+        cmake \
+        make \
+        g++ \
+        git \
+        pkg-config \
+        libsoapysdr-dev \
+        libiio-dev \
+        libad9361-dev \
+        libusb-1.0-0-dev \
     && rm -rf /var/lib/apt/lists/*
+
+# Ubuntu doesn't package soapysdr0.8-module-plutosdr (unlike -rtlsdr above),
+# so it's built from source here against a pinned release tag. Unlike
+# SDRplay below, PlutoSDR support is built unconditionally since it needs
+# no proprietary vendor file.
+RUN git clone --branch soapy-plutosdr-0.2.2 --depth 1 \
+        https://github.com/pothosware/SoapyPlutoSDR.git /tmp/SoapyPlutoSDR \
+    && cmake -S /tmp/SoapyPlutoSDR -B /tmp/SoapyPlutoSDR/build \
+    && cmake --build /tmp/SoapyPlutoSDR/build -j"$(nproc)" \
+    && cmake --install /tmp/SoapyPlutoSDR/build \
+    && rm -rf /tmp/SoapyPlutoSDR \
+    && ldconfig
 
 # vendor/sdrplay_api.run is optional: only needed if you intend to use
 # SDR_DRIVER=sdrplay at runtime. The wildcard COPY (paired with the always-
 # present vendor/.gitkeep) lets the build succeed with or without it; the
-# RUN step below detects which case applies. If it's absent and SDR_DRIVER=
-# sdrplay is set at runtime, docker-entrypoint.sh fails fast with a clear
-# error instead of hanging.
+# RUN step below detects which case applies. Ubuntu doesn't package
+# soapysdr0.8-module-sdrplay3 either, so when the API is present this also
+# builds that module from source (pinned release tag) against it. If the
+# API is absent and SDR_DRIVER=sdrplay is set at runtime,
+# docker-entrypoint.sh fails fast with a clear error instead of hanging.
 COPY vendor/sdrplay_api.run* vendor/.gitkeep /tmp/vendor-stage/
 RUN if [ -f /tmp/vendor-stage/sdrplay_api.run ]; then \
         echo "Installing SDRplay API from vendor/sdrplay_api.run" \
         && chmod +x /tmp/vendor-stage/sdrplay_api.run \
         && /tmp/vendor-stage/sdrplay_api.run --noexec --target /tmp/sdrplay_api_extracted \
         && sh -c 'cd /tmp/sdrplay_api_extracted && ./install_lib.sh' \
-        && rm -rf /tmp/sdrplay_api_extracted; \
+        && rm -rf /tmp/sdrplay_api_extracted \
+        && ldconfig \
+        && echo "Building soapysdr0.8-module-sdrplay3 against the installed API" \
+        && git clone --branch soapy-sdrplay3-0.5.2 --depth 1 \
+               https://github.com/pothosware/SoapySDRPlay3.git /tmp/SoapySDRPlay3 \
+        && cmake -S /tmp/SoapySDRPlay3 -B /tmp/SoapySDRPlay3/build \
+        && cmake --build /tmp/SoapySDRPlay3/build -j"$(nproc)" \
+        && cmake --install /tmp/SoapySDRPlay3/build \
+        && rm -rf /tmp/SoapySDRPlay3 \
+        && ldconfig; \
     else \
-        echo "vendor/sdrplay_api.run not found - skipping SDRplay API install (fine unless SDR_DRIVER=sdrplay)"; \
+        echo "vendor/sdrplay_api.run not found - skipping SDRplay API + module install (fine unless SDR_DRIVER=sdrplay)"; \
     fi \
     && rm -rf /tmp/vendor-stage
 
