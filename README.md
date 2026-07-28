@@ -90,12 +90,27 @@ if you like, the rule filename).
 
 No proprietary installer needed — the Dockerfile builds the SoapySDR
 PlutoSDR module from source automatically (Ubuntu doesn't package it).
-PlutoSDR commonly connects either as a USB device
-(needing the same udev/`SDR_DEVICE` treatment as above) or over its
-default network interface (`ip:192.168.2.1`, no USB device node at all).
-If you're using the network connection, the `devices:` entry in
-`compose.yaml` doesn't apply to your setup — this is confirmed during
-PlutoSDR bring-up.
+
+PlutoSDR's standard USB vendor/product ID is `0456:b673` (Analog
+Devices, Inc.) — confirm it with `lsusb`, then install a udev rule the
+same way as the other backends:
+
+```
+# /etc/udev/rules.d/70-sdr-radio.rules
+SUBSYSTEM=="usb", ATTR{idVendor}=="0456", ATTR{idProduct}=="b673", MODE="0660", GROUP="plugdev", SYMLINK+="sdr-radio"
+```
+
+Reload udev rules with `udevadm control --reload && udevadm trigger`, then
+confirm `/dev/sdr-radio` exists before starting the container.
+
+PlutoSDR also exposes a USB-Ethernet gadget interface (`ip:192.168.2.1`,
+commonly used for SSH/web access to its internal Linux) as an
+alternative to raw USB, with no USB device node at all. That path isn't
+supported by this Docker setup as-is — it would need `network_mode: host`
+in `compose.yaml` plus code changes to `scripts/sdr_backends/plutosdr.py`
+to pass an explicit hostname to SoapySDR, since Docker's network
+isolation blocks the auto-discovery this backend currently relies on. The
+udev/raw-USB route above is what this project actually uses.
 
 In all cases, set `SDR_DEVICE` in `.env` if your symlink path differs from
 the default `/dev/sdr-radio`.
