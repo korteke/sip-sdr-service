@@ -224,16 +224,20 @@ def main():
                                 squelch_db=config["squelch_db"], squelch_hang_ms=config["squelch_hang_ms"],
                                 deemphasis_us=config["deemphasis_us"], numtaps=numtaps,
                             )
-                        else:
+                        elif config["mode"] in SSB_MODES:
                             if iq_sample_rate_hz % SAMPLE_RATE != 0:
                                 raise ValueError(
                                     f"iq_sample_rate_hz={iq_sample_rate_hz:g} is not an integer "
                                     f"multiple of {SAMPLE_RATE} Hz"
                                 )
-                            decimation = int(round(iq_sample_rate_hz / SAMPLE_RATE))
+                            ssb_decimation = int(round(iq_sample_rate_hz / SAMPLE_RATE))
                             demodulator = sdr_demod.StreamingDemodulator(
-                                config["low_cut_hz"], config["high_cut_hz"], iq_sample_rate_hz, decimation,
+                                config["low_cut_hz"], config["high_cut_hz"], iq_sample_rate_hz, ssb_decimation,
                                 numtaps=numtaps,
+                            )
+                        else:
+                            raise AssertionError(
+                                f"unhandled mode {config['mode']!r}: MODE_CHOICES/SSB_MODES may be out of sync"
                             )
                     except Exception:
                         close_device(device, stream)
