@@ -54,6 +54,42 @@ case "$SDR_DRIVER" in
     *) echo "SDR_DRIVER must be sdrplay, rtlsdr, or plutosdr" >&2; exit 64 ;;
 esac
 
+# USB-based backends (rtlsdr, plutosdr) talk to the device via libusb, which
+# enumerates through sysfs (matching busnum/devnum attributes under
+# /sys/bus/usb/devices/*/) rather than by scanning /dev/bus/usb directly,
+# then opens the device at the conventional /dev/bus/usb/<busnum>/<devnum>
+# path. Docker's `devices:` mapping (compose.yaml) only creates a node at the
+# exact path given there (SDR_DEVICE) with the matching major:minor - it
+# doesn't also create that conventional path, so libusb-based enumeration
+# finds nothing without this. Recreate it here by cross-referencing sysfs on
+# major:minor, so this works for whatever bus/device numbers the host
+# assigned without hardcoding any vendor/product ID. Best-effort: any
+# failure here is not fatal, since it only affects USB device discovery, not
+# the rest of startup, and sdr_stream.py's own reconnect logic already
+# handles a device that can't be opened.
+(
+    sdr_device="${SDR_DEVICE:-/dev/sdr-radio}"
+    if [ -e "$sdr_device" ]; then
+        device_major_minor=$(stat -c '%t:%T' "$sdr_device")
+        device_major=$(printf '%d' "0x${device_major_minor%%:*}")
+        device_minor=$(printf '%d' "0x${device_major_minor##*:}")
+        for sysfs_dev in /sys/bus/usb/devices/*/dev; do
+            [ -f "$sysfs_dev" ] || continue
+            if [ "$(cat "$sysfs_dev")" = "${device_major}:${device_minor}" ]; then
+                usb_dir=$(dirname "$sysfs_dev")
+                busnum=$(cat "$usb_dir/busnum")
+                devnum=$(cat "$usb_dir/devnum")
+                bus_dir=$(printf '/dev/bus/usb/%03d' "$busnum")
+                device_node=$(printf '%s/%03d' "$bus_dir" "$devnum")
+                mkdir -p "$bus_dir"
+                [ -e "$device_node" ] || mknod "$device_node" c "$device_major" "$device_minor"
+                chmod 0666 "$device_node"
+                break
+            fi
+        done
+    fi
+) || echo "USB device node setup failed (non-fatal); libusb-based backends may not find the device" >&2
+
 external_transport_settings=""
 if [ -n "${EXTERNAL_ADDRESS:-}" ]; then
     external_transport_settings="external_media_address=$EXTERNAL_ADDRESS
