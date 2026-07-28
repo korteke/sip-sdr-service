@@ -141,6 +141,20 @@ describe the passband edge magnitudes; the resolved sideband determines
 the sign automatically, so you don't need to flip them by hand when
 retuning across the 10MHz boundary.
 
+`SDR_MODE` can also be `nfm` for narrowband FM — the same modulation as
+Marine VHF (e.g. Channel 16 at 156.800 MHz: set `SDR_FREQUENCY_KHZ=156800`)
+and ham/PMR FM channels, distinguished from broadcast FM only by narrower
+channel bandwidth and deviation. Unlike `lsb`/`usb`/`auto`, `nfm` ignores
+`SDR_LOW_CUT_HZ`/`SDR_HIGH_CUT_HZ` and instead reads `SDR_FM_DEVIATION_HZ`
+and `SDR_FM_CHANNEL_BANDWIDTH_HZ` (defaults: 5000 and 16000, matching Marine
+VHF's 16K0G3E emission). Optional `SDR_SQUELCH_DB` mutes output below a
+power threshold (unset by default — tune by ear/eye during bring-up, since
+the right value depends on antenna/gain/hardware); `SDR_SQUELCH_HANG_MS`
+(default 200) keeps audio open briefly after signal drops, to avoid chatter
+at the threshold. Optional `SDR_FM_DEEMPHASIS_US` applies a de-emphasis
+filter if your source pre-emphasizes audio (unset/flat by default, since
+this varies by radio/standard for two-way FM).
+
 The project is SIP-provider independent. Set `SIP_SERVER`, the account
 fields, ports, and any external address to values supplied by your own
 provider and network administrator.
