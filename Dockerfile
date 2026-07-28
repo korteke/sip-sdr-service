@@ -19,11 +19,23 @@ RUN apt-get update \
         udev \
     && rm -rf /var/lib/apt/lists/*
 
-COPY vendor/sdrplay_api.run /tmp/sdrplay_api.run
-RUN chmod +x /tmp/sdrplay_api.run \
-    && /tmp/sdrplay_api.run --noexec --target /tmp/sdrplay_api_extracted \
-    && sh -c 'cd /tmp/sdrplay_api_extracted && ./install_lib.sh' \
-    && rm -rf /tmp/sdrplay_api.run /tmp/sdrplay_api_extracted
+# vendor/sdrplay_api.run is optional: only needed if you intend to use
+# SDR_DRIVER=sdrplay at runtime. The wildcard COPY (paired with the always-
+# present vendor/.gitkeep) lets the build succeed with or without it; the
+# RUN step below detects which case applies. If it's absent and SDR_DRIVER=
+# sdrplay is set at runtime, docker-entrypoint.sh fails fast with a clear
+# error instead of hanging.
+COPY vendor/sdrplay_api.run* vendor/.gitkeep /tmp/vendor-stage/
+RUN if [ -f /tmp/vendor-stage/sdrplay_api.run ]; then \
+        echo "Installing SDRplay API from vendor/sdrplay_api.run" \
+        && chmod +x /tmp/vendor-stage/sdrplay_api.run \
+        && /tmp/vendor-stage/sdrplay_api.run --noexec --target /tmp/sdrplay_api_extracted \
+        && sh -c 'cd /tmp/sdrplay_api_extracted && ./install_lib.sh' \
+        && rm -rf /tmp/sdrplay_api_extracted; \
+    else \
+        echo "vendor/sdrplay_api.run not found - skipping SDRplay API install (fine unless SDR_DRIVER=sdrplay)"; \
+    fi \
+    && rm -rf /tmp/vendor-stage
 
 COPY config/asterisk.conf /etc/asterisk/asterisk.conf
 COPY config/extensions.conf /etc/asterisk/extensions.conf
