@@ -154,6 +154,61 @@ class ChooseFmDecimationTests(unittest.TestCase):
             MODULE.choose_fm_decimation(8000.0, deviation_hz=5000, channel_bandwidth_hz=16000)
 
 
+class FmStreamingDemodulatorTests(unittest.TestCase):
+    def test_recovers_audio_tone_frequency(self):
+        raw_iq_rate_hz = 128000.0
+        stage1, stage2 = 4, 4
+        audio_freq_hz = 1000.0
+        deviation_hz = 3000.0
+        duration = 0.5
+        t = np.arange(int(raw_iq_rate_hz * duration)) / raw_iq_rate_hz
+
+        # Instantaneous frequency deviation_hz * sin(2*pi*audio_freq_hz*t) is
+        # produced by an IQ phase whose derivative equals that expression;
+        # -(deviation_hz/audio_freq_hz)*cos(...) is that phase's integral.
+        phase = -(deviation_hz / audio_freq_hz) * np.cos(2 * np.pi * audio_freq_hz * t)
+        iq = np.exp(1j * phase)
+
+        demod = MODULE.FmStreamingDemodulator(16000, raw_iq_rate_hz, stage1, stage2)
+        audio = demod.process(iq)
+        audio = audio[len(audio) // 4:]  # drop filter startup transient
+
+        output_rate_hz = raw_iq_rate_hz / (stage1 * stage2)
+        spectrum = np.fft.rfft(audio * np.hanning(len(audio)))
+        freqs = np.fft.rfftfreq(len(audio), d=1.0 / output_rate_hz)
+        peak_freq = freqs[np.argmax(np.abs(spectrum))]
+        self.assertAlmostEqual(peak_freq, audio_freq_hz, delta=30.0)
+
+    def test_streaming_chunks_match_single_batch_call(self):
+        raw_iq_rate_hz = 128000.0
+        stage1, stage2 = 4, 4
+        audio_freq_hz = 1000.0
+        deviation_hz = 3000.0
+        duration = 0.3
+        t = np.arange(int(raw_iq_rate_hz * duration)) / raw_iq_rate_hz
+        phase = -(deviation_hz / audio_freq_hz) * np.cos(2 * np.pi * audio_freq_hz * t)
+        iq = np.exp(1j * phase)
+
+        reference = MODULE.FmStreamingDemodulator(16000, raw_iq_rate_hz, stage1, stage2).process(iq)
+
+        chunked = MODULE.FmStreamingDemodulator(16000, raw_iq_rate_hz, stage1, stage2)
+        chunk_sizes = [1000, 3333, 500, 7000, 2222, 1]
+        pieces = []
+        pos = 0
+        i = 0
+        while pos < len(iq):
+            size = chunk_sizes[i % len(chunk_sizes)]
+            pieces.append(chunked.process(iq[pos:pos + size]))
+            pos += size
+            i += 1
+        streamed = np.concatenate(pieces)
+
+        n = min(len(reference), len(streamed))
+        skip = 20  # filter startup transient
+        max_difference = np.max(np.abs(reference[skip:n] - streamed[skip:n]))
+        self.assertLess(max_difference, 1e-6)
+
+
 class StreamingDemodulatorTests(unittest.TestCase):
     def test_recovers_correct_frequency_for_lsb(self):
         fs = 128000.0

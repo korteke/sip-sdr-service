@@ -116,6 +116,67 @@ class StreamingDemodulator:
         return decimated.real
 
 
+class FmStreamingDemodulator:
+    """Two-stage narrowband FM demodulator. A channel lowpass filter and
+    partial ("stage 1") decimation bring the IQ signal to a rate wide
+    enough to resolve the configured deviation without aliasing (see
+    choose_fm_decimation). A phase discriminator converts consecutive
+    complex samples to instantaneous frequency, carrying its previous
+    sample across process() calls the same way StreamingDemodulator
+    carries filter state, so chunk boundaries introduce no discontinuity.
+    An audio lowpass and further ("stage 2") decimation then produce the
+    final audio-rate output.
+    """
+
+    def __init__(self, channel_bandwidth_hz, raw_iq_rate_hz, stage1_decimation, stage2_decimation,
+                 numtaps=DEFAULT_NUMTAPS):
+        self.channel_taps = design_lowpass_filter(channel_bandwidth_hz, raw_iq_rate_hz, numtaps)
+        self.channel_filter_state = np.zeros(numtaps - 1, dtype=np.complex128)
+        self.stage1_decimation = stage1_decimation
+        self.stage1_phase = 0
+
+        self.intermediate_rate_hz = raw_iq_rate_hz / stage1_decimation
+        self.discriminator_scale = self.intermediate_rate_hz / (2 * np.pi)
+        self.previous_sample = 1.0 + 0.0j
+
+        self.stage2_decimation = stage2_decimation
+        audio_cutoff_hz = 0.9 * self.intermediate_rate_hz / (2 * stage2_decimation)
+        self.audio_taps = firwin(numtaps, audio_cutoff_hz, fs=self.intermediate_rate_hz)
+        self.audio_filter_state = np.zeros(numtaps - 1, dtype=np.float64)
+        self.stage2_phase = 0
+
+    def process(self, iq_chunk):
+        """Return a 1-D float64 array of decimated real audio samples for
+        the given complex IQ chunk (any length, including zero or one).
+        """
+        iq_chunk = np.asarray(iq_chunk, dtype=np.complex128)
+        filtered, self.channel_filter_state = lfilter(
+            self.channel_taps, [1.0], iq_chunk, zi=self.channel_filter_state,
+        )
+
+        start = (-self.stage1_phase) % self.stage1_decimation
+        decimated = filtered[start::self.stage1_decimation]
+        self.stage1_phase = (self.stage1_phase + len(iq_chunk)) % self.stage1_decimation
+
+        if len(decimated) == 0:
+            return np.zeros(0, dtype=np.float64)
+
+        extended = np.concatenate(([self.previous_sample], decimated))
+        instantaneous_frequency = (
+            np.angle(extended[1:] * np.conj(extended[:-1])) * self.discriminator_scale
+        )
+        self.previous_sample = decimated[-1]
+
+        audio, self.audio_filter_state = lfilter(
+            self.audio_taps, [1.0], instantaneous_frequency, zi=self.audio_filter_state,
+        )
+
+        start2 = (-self.stage2_phase) % self.stage2_decimation
+        decimated_audio = audio[start2::self.stage2_decimation]
+        self.stage2_phase = (self.stage2_phase + len(audio)) % self.stage2_decimation
+        return decimated_audio
+
+
 def audio_to_pcm16(audio, gain=1.0):
     """Scale float audio samples to little-endian int16 PCM bytes, clipping
     to full scale.
