@@ -8,6 +8,7 @@ SIDEBAND_CROSSOVER_KHZ = 10000.0
 DEFAULT_NUMTAPS = 257
 FM_INTERMEDIATE_RATE_MARGIN = 1.5  # headroom above Carson's-rule bandwidth, for filter roll-off
 AUDIO_CUTOFF_MARGIN = 0.9  # headroom below stage-2 Nyquist, for filter roll-off
+DEFAULT_SQUELCH_HANG_MS = 200
 
 
 def resolve_mode(mode, frequency_khz):
@@ -130,7 +131,7 @@ class FmStreamingDemodulator:
     """
 
     def __init__(self, channel_bandwidth_hz, raw_iq_rate_hz, stage1_decimation, stage2_decimation,
-                 numtaps=DEFAULT_NUMTAPS):
+                 squelch_db=None, squelch_hang_ms=DEFAULT_SQUELCH_HANG_MS, numtaps=DEFAULT_NUMTAPS):
         self.channel_taps = design_lowpass_filter(channel_bandwidth_hz, raw_iq_rate_hz, numtaps)
         self.channel_filter_state = np.zeros(numtaps - 1, dtype=np.complex128)
         self.stage1_decimation = stage1_decimation
@@ -146,6 +147,11 @@ class FmStreamingDemodulator:
         self.audio_taps = firwin(numtaps, audio_cutoff_hz, fs=self.intermediate_rate_hz, window=("kaiser", 8.0))
         self.audio_filter_state = np.zeros(numtaps - 1, dtype=np.float64)
         self.stage2_phase = 0
+
+        self.squelch_db = squelch_db
+        self.squelch_open = squelch_db is None
+        self.squelch_hang_samples = int(squelch_hang_ms / 1000.0 * self.intermediate_rate_hz)
+        self.squelch_hang_remaining = 0
 
     def process(self, iq_chunk):
         """Return a 1-D float64 array of decimated real audio samples for
@@ -163,11 +169,25 @@ class FmStreamingDemodulator:
         if len(decimated) == 0:
             return np.zeros(0, dtype=np.float64)
 
+        if self.squelch_db is not None:
+            chunk_power_db = 10 * np.log10(max(np.mean(np.abs(decimated) ** 2), 1e-12))
+            if chunk_power_db >= self.squelch_db:
+                self.squelch_open = True
+                self.squelch_hang_remaining = self.squelch_hang_samples
+            elif self.squelch_hang_remaining > len(decimated):
+                self.squelch_hang_remaining -= len(decimated)
+            else:
+                self.squelch_hang_remaining = 0
+                self.squelch_open = False
+
         extended = np.concatenate(([self.previous_sample], decimated))
         instantaneous_frequency = (
             np.angle(extended[1:] * np.conj(extended[:-1])) * self.discriminator_scale
         )
         self.previous_sample = decimated[-1]
+
+        if not self.squelch_open:
+            instantaneous_frequency = np.zeros_like(instantaneous_frequency)
 
         audio, self.audio_filter_state = lfilter(
             self.audio_taps, [1.0], instantaneous_frequency, zi=self.audio_filter_state,

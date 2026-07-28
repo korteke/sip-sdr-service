@@ -209,6 +209,51 @@ class FmStreamingDemodulatorTests(unittest.TestCase):
         self.assertLess(max_difference, 1e-6)
 
 
+class FmSquelchTests(unittest.TestCase):
+    def test_signal_present_passes_audio(self):
+        raw_iq_rate_hz = 128000.0
+        stage1, stage2 = 4, 4
+        t = np.arange(int(raw_iq_rate_hz * 0.1)) / raw_iq_rate_hz
+        iq = np.exp(1j * 2 * np.pi * 1000 * t)  # strong, full-amplitude signal
+
+        demod = MODULE.FmStreamingDemodulator(
+            16000, raw_iq_rate_hz, stage1, stage2, squelch_db=-20, squelch_hang_ms=50,
+        )
+        audio = demod.process(iq)
+        self.assertGreater(np.max(np.abs(audio[len(audio) // 4:])), 0.0)
+
+    def test_silence_below_threshold_is_squelched(self):
+        raw_iq_rate_hz = 128000.0
+        stage1, stage2 = 4, 4
+        rng = np.random.default_rng(1)
+        n = int(raw_iq_rate_hz * 0.1)
+        iq = (rng.standard_normal(n) + 1j * rng.standard_normal(n)) * 1e-4  # very low-power noise
+
+        demod = MODULE.FmStreamingDemodulator(
+            16000, raw_iq_rate_hz, stage1, stage2, squelch_db=-20, squelch_hang_ms=50,
+        )
+        audio = demod.process(iq)
+        np.testing.assert_array_equal(audio, np.zeros_like(audio))
+
+    def test_hang_time_keeps_audio_briefly_after_signal_drops(self):
+        raw_iq_rate_hz = 128000.0
+        stage1, stage2 = 4, 4
+        n_signal = int(raw_iq_rate_hz * 0.02)
+        n_silence = int(raw_iq_rate_hz * 0.02)
+        t_signal = np.arange(n_signal) / raw_iq_rate_hz
+        signal = np.exp(1j * 2 * np.pi * 1000 * t_signal)
+        silence = np.full(n_silence, 1e-6, dtype=np.complex128)
+
+        demod = MODULE.FmStreamingDemodulator(
+            16000, raw_iq_rate_hz, stage1, stage2, squelch_db=-20, squelch_hang_ms=100,
+        )
+        demod.process(signal)
+        demod.process(silence)
+        # hang time (100ms) exceeds the silence chunk's duration (20ms), so
+        # squelch should still be open immediately after signal disappears.
+        self.assertTrue(demod.squelch_open)
+
+
 class StreamingDemodulatorTests(unittest.TestCase):
     def test_recovers_correct_frequency_for_lsb(self):
         fs = 128000.0
