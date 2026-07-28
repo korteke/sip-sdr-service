@@ -194,7 +194,7 @@ def main():
                         f"mode={config['mode']}",
                         file=sys.stderr, flush=True,
                     )
-                    device, stream, iq_sample_rate_hz, decimation = backend.open_device(
+                    device, stream, iq_sample_rate_hz = backend.open_device(
                         frequency_hz, config["backend_config"],
                     )
                 except Exception as error:
@@ -205,21 +205,36 @@ def main():
                     backoff = min(backoff * 2, maximum_backoff)
 
                 if device is not None and demodulator is None:
-                    # A failure here (bad rate, or an unbuildable filter design) is a
-                    # configuration/hardware-compatibility problem, not a transient
-                    # device error, so it must NOT be swallowed by the retry logic
-                    # above: close the just-opened device and let it propagate all
-                    # the way out to the __main__ guard's SDR_CONFIG_ERROR handler.
+                    # A failure here (bad rate, non-integer decimation, or an
+                    # unbuildable filter design) is a configuration/hardware-
+                    # compatibility problem, not a transient device error, so it
+                    # must NOT be swallowed by the retry logic above: close the
+                    # just-opened device and let it propagate all the way out to
+                    # the __main__ guard's SDR_CONFIG_ERROR handler.
                     try:
-                        if iq_sample_rate_hz / decimation != SAMPLE_RATE:
-                            raise ValueError(
-                                f"iq_sample_rate_hz={iq_sample_rate_hz:g} / decimation={decimation} "
-                                f"= {iq_sample_rate_hz / decimation:g} Hz, expected {SAMPLE_RATE} Hz"
+                        numtaps = getattr(backend, "NUMTAPS", sdr_demod.DEFAULT_NUMTAPS)
+                        if config["mode"] == "nfm":
+                            stage1_decimation, stage2_decimation = sdr_demod.choose_fm_decimation(
+                                iq_sample_rate_hz, config["deviation_hz"], config["channel_bandwidth_hz"],
+                                target_rate_hz=SAMPLE_RATE,
                             )
-                        demodulator = sdr_demod.StreamingDemodulator(
-                            config["low_cut_hz"], config["high_cut_hz"], iq_sample_rate_hz, decimation,
-                            numtaps=getattr(backend, "NUMTAPS", sdr_demod.DEFAULT_NUMTAPS),
-                        )
+                            demodulator = sdr_demod.FmStreamingDemodulator(
+                                config["channel_bandwidth_hz"], iq_sample_rate_hz,
+                                stage1_decimation, stage2_decimation,
+                                squelch_db=config["squelch_db"], squelch_hang_ms=config["squelch_hang_ms"],
+                                deemphasis_us=config["deemphasis_us"], numtaps=numtaps,
+                            )
+                        else:
+                            if iq_sample_rate_hz % SAMPLE_RATE != 0:
+                                raise ValueError(
+                                    f"iq_sample_rate_hz={iq_sample_rate_hz:g} is not an integer "
+                                    f"multiple of {SAMPLE_RATE} Hz"
+                                )
+                            decimation = int(round(iq_sample_rate_hz / SAMPLE_RATE))
+                            demodulator = sdr_demod.StreamingDemodulator(
+                                config["low_cut_hz"], config["high_cut_hz"], iq_sample_rate_hz, decimation,
+                                numtaps=numtaps,
+                            )
                     except Exception:
                         close_device(device, stream)
                         device = None
