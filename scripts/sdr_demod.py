@@ -6,6 +6,7 @@ from scipy.signal import firwin, lfilter
 
 SIDEBAND_CROSSOVER_KHZ = 10000.0
 DEFAULT_NUMTAPS = 257
+FM_INTERMEDIATE_RATE_MARGIN = 1.5  # headroom above Carson's-rule bandwidth, for filter roll-off
 
 
 def resolve_mode(mode, frequency_khz):
@@ -51,6 +52,44 @@ def design_lowpass_filter(bandwidth_hz, sample_rate_hz, numtaps=DEFAULT_NUMTAPS)
     half_bandwidth_hz = bandwidth_hz / 2.0
     taps = firwin(numtaps, half_bandwidth_hz, fs=sample_rate_hz, window=("kaiser", 8.0))
     return taps.astype(np.complex128)
+
+
+def choose_fm_decimation(raw_iq_rate_hz, deviation_hz, channel_bandwidth_hz, target_rate_hz=8000):
+    """Return (stage1_decimation, stage2_decimation) for two-stage FM
+    demodulation. Stage 1 decimates raw complex IQ down to the smallest
+    intermediate rate that both divides raw_iq_rate_hz evenly and stays
+    above the Carson's-rule-derived bandwidth requirement (so the FM
+    discriminator can resolve the configured deviation without aliasing).
+    Stage 2 decimates the discriminator's real-valued audio output down to
+    exactly target_rate_hz. Raises ValueError if no such integer split
+    exists for the given backend rate / deviation / bandwidth combination.
+    """
+    if raw_iq_rate_hz % target_rate_hz != 0:
+        raise ValueError(
+            f"raw_iq_rate_hz={raw_iq_rate_hz:g} is not an integer multiple of "
+            f"target_rate_hz={target_rate_hz:g}"
+        )
+    total_decimation = int(round(raw_iq_rate_hz / target_rate_hz))
+    minimum_intermediate_rate_hz = FM_INTERMEDIATE_RATE_MARGIN * max(channel_bandwidth_hz, 2 * deviation_hz)
+
+    best_stage1 = None
+    for stage1 in range(1, total_decimation + 1):
+        if total_decimation % stage1 != 0:
+            continue
+        intermediate_rate_hz = raw_iq_rate_hz / stage1
+        if intermediate_rate_hz < minimum_intermediate_rate_hz:
+            continue
+        if best_stage1 is None or stage1 > best_stage1:
+            best_stage1 = stage1
+
+    if best_stage1 is None:
+        raise ValueError(
+            f"no integer decimation split of raw_iq_rate_hz={raw_iq_rate_hz:g} reaches "
+            f"target_rate_hz={target_rate_hz:g} while keeping the intermediate rate above "
+            f"{minimum_intermediate_rate_hz:g} Hz (channel_bandwidth_hz={channel_bandwidth_hz:g}, "
+            f"deviation_hz={deviation_hz:g})"
+        )
+    return best_stage1, total_decimation // best_stage1
 
 
 class StreamingDemodulator:

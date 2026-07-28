@@ -132,6 +132,28 @@ class DesignLowpassFilterTests(unittest.TestCase):
         )
 
 
+class ChooseFmDecimationTests(unittest.TestCase):
+    def test_sdrplay_rate_marine_defaults(self):
+        stage1, stage2 = MODULE.choose_fm_decimation(128000.0, deviation_hz=5000, channel_bandwidth_hz=16000)
+        self.assertEqual(stage1, 4)
+        self.assertEqual(stage2, 4)
+        self.assertEqual(stage1 * stage2, 16)
+
+    def test_rtlsdr_rate_marine_defaults(self):
+        stage1, stage2 = MODULE.choose_fm_decimation(256000.0, deviation_hz=5000, channel_bandwidth_hz=16000)
+        self.assertEqual(stage1, 8)
+        self.assertEqual(stage2, 4)
+        self.assertEqual(stage1 * stage2, 32)
+
+    def test_raises_when_raw_rate_not_multiple_of_target(self):
+        with self.assertRaises(ValueError):
+            MODULE.choose_fm_decimation(100000.0, deviation_hz=5000, channel_bandwidth_hz=16000)
+
+    def test_raises_when_no_split_meets_intermediate_rate_floor(self):
+        with self.assertRaises(ValueError):
+            MODULE.choose_fm_decimation(8000.0, deviation_hz=5000, channel_bandwidth_hz=16000)
+
+
 class StreamingDemodulatorTests(unittest.TestCase):
     def test_recovers_correct_frequency_for_lsb(self):
         fs = 128000.0
