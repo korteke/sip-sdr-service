@@ -6,3 +6,4 @@ __pycache__/
 vendor/*.run
 .claude
 docs
+.worktrees
