@@ -61,7 +61,7 @@ def load_config():
             config["low_cut_hz"], config["high_cut_hz"] = -magnitude_high, -magnitude_low
         else:
             config["low_cut_hz"], config["high_cut_hz"] = magnitude_low, magnitude_high
-    else:
+    elif mode == "nfm":
         deviation_hz = env_float("SDR_FM_DEVIATION_HZ", 5000)
         channel_bandwidth_hz = env_float("SDR_FM_CHANNEL_BANDWIDTH_HZ", 16000)
         if deviation_hz <= 0:
@@ -69,6 +69,10 @@ def load_config():
         if channel_bandwidth_hz <= 0:
             raise ValueError("SDR_FM_CHANNEL_BANDWIDTH_HZ must be positive")
 
+        # squelch_db/deemphasis_us: None means "feature disabled", matching
+        # FmStreamingDemodulator's own optional-parameter contract (see
+        # scripts/sdr_demod.py). The other three fields are structural
+        # parameters the demodulator always needs a value for.
         squelch_setting = os.environ.get("SDR_SQUELCH_DB", "").strip()
         squelch_db = float(squelch_setting) if squelch_setting else None
 
@@ -88,6 +92,8 @@ def load_config():
             "squelch_hang_ms": squelch_hang_ms,
             "deemphasis_us": deemphasis_us,
         })
+    else:
+        raise AssertionError(f"unhandled mode {mode!r}: MODE_CHOICES/SSB_MODES may be out of sync")
 
     return config
 

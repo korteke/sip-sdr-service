@@ -85,6 +85,16 @@ class LoadConfigTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 MODULE.load_config()
 
+    def test_nfm_non_positive_squelch_hang_is_rejected(self):
+        with patch.dict(os.environ, {"SDR_MODE": "nfm", "SDR_SQUELCH_HANG_MS": "0"}, clear=True):
+            with self.assertRaises(ValueError):
+                MODULE.load_config()
+
+    def test_nfm_non_positive_deemphasis_is_rejected(self):
+        with patch.dict(os.environ, {"SDR_MODE": "nfm", "SDR_FM_DEEMPHASIS_US": "0"}, clear=True):
+            with self.assertRaises(ValueError):
+                MODULE.load_config()
+
 
 class BufferTests(unittest.TestCase):
     def test_buffer_below_ceiling_is_unchanged(self):
