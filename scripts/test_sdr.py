@@ -9,7 +9,7 @@ import numpy as np
 
 sys.path.insert(0, "/opt/sip-sdr-service")
 
-from sdr_stream import FRAME_BYTES, close_device, load_config
+from sdr_stream import FRAME_BYTES, SAMPLE_RATE, SSB_MODES, close_device, load_config
 import sdr_demod
 
 READ_CHUNK_SAMPLES = 4096
@@ -17,19 +17,35 @@ READ_CHUNK_SAMPLES = 4096
 timeout_seconds = float(os.environ.get("SDR_TEST_TIMEOUT_SECONDS", "20"))
 config = load_config()
 frequency_hz = config["frequency_khz"] * 1000.0
-device, stream, iq_sample_rate_hz, decimation = config["backend"].open_device(
+device, stream, iq_sample_rate_hz = config["backend"].open_device(
     frequency_hz, config["backend_config"],
 )
 try:
-    if iq_sample_rate_hz / decimation != 8000:
-        raise ValueError(
-            f"iq_sample_rate_hz={iq_sample_rate_hz:g} / decimation={decimation} "
-            f"= {iq_sample_rate_hz / decimation:g} Hz, expected 8000 Hz"
+    numtaps = getattr(config["backend"], "NUMTAPS", sdr_demod.DEFAULT_NUMTAPS)
+    if config["mode"] == "nfm":
+        stage1_decimation, stage2_decimation = sdr_demod.choose_fm_decimation(
+            iq_sample_rate_hz, config["deviation_hz"], config["channel_bandwidth_hz"],
+            target_rate_hz=SAMPLE_RATE,
         )
-    demodulator = sdr_demod.StreamingDemodulator(
-        config["low_cut_hz"], config["high_cut_hz"], iq_sample_rate_hz, decimation,
-        numtaps=getattr(config["backend"], "NUMTAPS", sdr_demod.DEFAULT_NUMTAPS),
-    )
+        demodulator = sdr_demod.FmStreamingDemodulator(
+            config["channel_bandwidth_hz"], iq_sample_rate_hz,
+            stage1_decimation, stage2_decimation,
+            squelch_db=config["squelch_db"], squelch_hang_ms=config["squelch_hang_ms"],
+            deemphasis_us=config["deemphasis_us"], numtaps=numtaps,
+        )
+    elif config["mode"] in SSB_MODES:
+        if iq_sample_rate_hz % SAMPLE_RATE != 0:
+            raise ValueError(
+                f"iq_sample_rate_hz={iq_sample_rate_hz:g} is not an integer "
+                f"multiple of {SAMPLE_RATE} Hz"
+            )
+        ssb_decimation = int(round(iq_sample_rate_hz / SAMPLE_RATE))
+        demodulator = sdr_demod.StreamingDemodulator(
+            config["low_cut_hz"], config["high_cut_hz"], iq_sample_rate_hz, ssb_decimation,
+            numtaps=numtaps,
+        )
+    else:
+        raise AssertionError(f"unhandled mode {config['mode']!r}: MODE_CHOICES/SSB_MODES may be out of sync")
 except Exception:
     close_device(device, stream)
     raise
