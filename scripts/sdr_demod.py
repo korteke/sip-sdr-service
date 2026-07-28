@@ -231,6 +231,39 @@ class FmStreamingDemodulator:
         return decimated_audio
 
 
+def build_demodulator(config, backend, iq_sample_rate_hz, sample_rate_hz, ssb_modes):
+    """Construct the right StreamingDemodulator/FmStreamingDemodulator for
+    config["mode"], given an opened backend's intrinsic IQ rate. Shared by
+    sdr_stream.py's main() and test_sdr.py so decimation/demodulator-
+    selection logic has exactly one implementation.
+    """
+    numtaps = getattr(backend, "NUMTAPS", DEFAULT_NUMTAPS)
+    if config["mode"] == "nfm":
+        stage1_decimation, stage2_decimation = choose_fm_decimation(
+            iq_sample_rate_hz, config["deviation_hz"], config["channel_bandwidth_hz"],
+            target_rate_hz=sample_rate_hz,
+        )
+        return FmStreamingDemodulator(
+            config["channel_bandwidth_hz"], iq_sample_rate_hz,
+            stage1_decimation, stage2_decimation,
+            squelch_db=config["squelch_db"], squelch_hang_ms=config["squelch_hang_ms"],
+            deemphasis_us=config["deemphasis_us"], numtaps=numtaps,
+        )
+    elif config["mode"] in ssb_modes:
+        if iq_sample_rate_hz % sample_rate_hz != 0:
+            raise ValueError(
+                f"iq_sample_rate_hz={iq_sample_rate_hz:g} is not an integer "
+                f"multiple of {sample_rate_hz:g} Hz"
+            )
+        ssb_decimation = int(round(iq_sample_rate_hz / sample_rate_hz))
+        return StreamingDemodulator(
+            config["low_cut_hz"], config["high_cut_hz"], iq_sample_rate_hz, ssb_decimation,
+            numtaps=numtaps,
+        )
+    else:
+        raise AssertionError(f"unhandled mode {config['mode']!r}: MODE_CHOICES/SSB_MODES may be out of sync")
+
+
 def audio_to_pcm16(audio, gain=1.0):
     """Scale float audio samples to little-endian int16 PCM bytes, clipping
     to full scale.

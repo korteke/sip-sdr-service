@@ -212,33 +212,9 @@ def main():
                     # just-opened device and let it propagate all the way out to
                     # the __main__ guard's SDR_CONFIG_ERROR handler.
                     try:
-                        numtaps = getattr(backend, "NUMTAPS", sdr_demod.DEFAULT_NUMTAPS)
-                        if config["mode"] == "nfm":
-                            stage1_decimation, stage2_decimation = sdr_demod.choose_fm_decimation(
-                                iq_sample_rate_hz, config["deviation_hz"], config["channel_bandwidth_hz"],
-                                target_rate_hz=SAMPLE_RATE,
-                            )
-                            demodulator = sdr_demod.FmStreamingDemodulator(
-                                config["channel_bandwidth_hz"], iq_sample_rate_hz,
-                                stage1_decimation, stage2_decimation,
-                                squelch_db=config["squelch_db"], squelch_hang_ms=config["squelch_hang_ms"],
-                                deemphasis_us=config["deemphasis_us"], numtaps=numtaps,
-                            )
-                        elif config["mode"] in SSB_MODES:
-                            if iq_sample_rate_hz % SAMPLE_RATE != 0:
-                                raise ValueError(
-                                    f"iq_sample_rate_hz={iq_sample_rate_hz:g} is not an integer "
-                                    f"multiple of {SAMPLE_RATE} Hz"
-                                )
-                            ssb_decimation = int(round(iq_sample_rate_hz / SAMPLE_RATE))
-                            demodulator = sdr_demod.StreamingDemodulator(
-                                config["low_cut_hz"], config["high_cut_hz"], iq_sample_rate_hz, ssb_decimation,
-                                numtaps=numtaps,
-                            )
-                        else:
-                            raise AssertionError(
-                                f"unhandled mode {config['mode']!r}: MODE_CHOICES/SSB_MODES may be out of sync"
-                            )
+                        demodulator = sdr_demod.build_demodulator(
+                            config, backend, iq_sample_rate_hz, SAMPLE_RATE, SSB_MODES,
+                        )
                     except Exception:
                         close_device(device, stream)
                         device = None

@@ -405,6 +405,33 @@ class StreamingDemodulatorTests(unittest.TestCase):
         self.assertLess(max_difference, 1e-9)
 
 
+class BuildDemodulatorTests(unittest.TestCase):
+    def test_builds_fm_demodulator_for_nfm_mode(self):
+        config = {
+            "mode": "nfm", "deviation_hz": 5000.0, "channel_bandwidth_hz": 16000.0,
+            "squelch_db": None, "squelch_hang_ms": 200.0, "deemphasis_us": None,
+        }
+        demod = MODULE.build_demodulator(config, object(), 128000.0, 8000, {"lsb", "usb"})
+        self.assertIsInstance(demod, MODULE.FmStreamingDemodulator)
+
+    def test_builds_ssb_demodulator_for_lsb_mode(self):
+        config = {"mode": "lsb", "low_cut_hz": -2700.0, "high_cut_hz": -300.0}
+        demod = MODULE.build_demodulator(config, object(), 128000.0, 8000, {"lsb", "usb"})
+        self.assertIsInstance(demod, MODULE.StreamingDemodulator)
+
+    def test_raises_for_unhandled_mode(self):
+        config = {"mode": "am"}
+        with self.assertRaises(AssertionError):
+            MODULE.build_demodulator(config, object(), 128000.0, 8000, {"lsb", "usb"})
+
+    def test_uses_backend_numtaps_when_present(self):
+        class FakeBackend:
+            NUMTAPS = 99
+        config = {"mode": "lsb", "low_cut_hz": -2700.0, "high_cut_hz": -300.0}
+        demod = MODULE.build_demodulator(config, FakeBackend(), 128000.0, 8000, {"lsb", "usb"})
+        self.assertEqual(len(demod.taps), 99)
+
+
 class AudioToPcm16Tests(unittest.TestCase):
     def test_scales_and_converts_to_int16_bytes(self):
         audio = np.array([0.0, 0.5, -0.5])
