@@ -9,6 +9,25 @@ DEFAULT_NUMTAPS = 257
 FM_INTERMEDIATE_RATE_MARGIN = 1.5  # headroom above Carson's-rule bandwidth, for filter roll-off
 AUDIO_CUTOFF_MARGIN = 0.9  # headroom below stage-2 Nyquist, for filter roll-off
 DEFAULT_SQUELCH_HANG_MS = 200
+# Real hardware clocks (crystal oscillators, PLL dividers) are never
+# perfectly exact - e.g. a PlutoSDR asked for 128000 Hz commonly reports
+# 127999 Hz back (about 8 ppm off), so decimation math can't require a
+# bit-exact multiple of the target rate. This tolerance is generous
+# relative to typical hardware clock error while still easily catching a
+# genuinely wrong/misconfigured rate (which would be off by far more).
+RATE_TOLERANCE_RATIO = 1e-4
+
+
+def matches_rate_multiple(rate_hz, target_rate_hz):
+    """Return the nearest integer multiple of target_rate_hz if rate_hz is
+    within RATE_TOLERANCE_RATIO of it, else None.
+    """
+    multiple = round(rate_hz / target_rate_hz)
+    if multiple <= 0:
+        return None
+    if abs(rate_hz - multiple * target_rate_hz) > rate_hz * RATE_TOLERANCE_RATIO:
+        return None
+    return multiple
 
 
 def resolve_mode(mode, frequency_khz):
@@ -63,15 +82,15 @@ def choose_fm_decimation(raw_iq_rate_hz, deviation_hz, channel_bandwidth_hz, tar
     above the Carson's-rule-derived bandwidth requirement (so the FM
     discriminator can resolve the configured deviation without aliasing).
     Stage 2 decimates the discriminator's real-valued audio output down to
-    exactly target_rate_hz. Raises ValueError if no such integer split
-    exists for the given backend rate / deviation / bandwidth combination.
+    exactly target_rate_hz. Raises ValueError if raw_iq_rate_hz isn't within
+    RATE_TOLERANCE_RATIO of an integer multiple of target_rate_hz.
     """
-    if raw_iq_rate_hz % target_rate_hz != 0:
+    total_decimation = matches_rate_multiple(raw_iq_rate_hz, target_rate_hz)
+    if total_decimation is None:
         raise ValueError(
-            f"raw_iq_rate_hz={raw_iq_rate_hz:g} is not an integer multiple of "
+            f"raw_iq_rate_hz={raw_iq_rate_hz:g} is not close enough to an integer multiple of "
             f"target_rate_hz={target_rate_hz:g}"
         )
-    total_decimation = int(round(raw_iq_rate_hz / target_rate_hz))
     minimum_intermediate_rate_hz = FM_INTERMEDIATE_RATE_MARGIN * max(channel_bandwidth_hz, 2 * deviation_hz)
 
     best_stage1 = None
@@ -250,12 +269,12 @@ def build_demodulator(config, backend, iq_sample_rate_hz, sample_rate_hz, ssb_mo
             deemphasis_us=config["deemphasis_us"], numtaps=numtaps,
         )
     elif config["mode"] in ssb_modes:
-        if iq_sample_rate_hz % sample_rate_hz != 0:
+        ssb_decimation = matches_rate_multiple(iq_sample_rate_hz, sample_rate_hz)
+        if ssb_decimation is None:
             raise ValueError(
-                f"iq_sample_rate_hz={iq_sample_rate_hz:g} is not an integer "
+                f"iq_sample_rate_hz={iq_sample_rate_hz:g} is not close enough to an integer "
                 f"multiple of {sample_rate_hz:g} Hz"
             )
-        ssb_decimation = int(round(iq_sample_rate_hz / sample_rate_hz))
         return StreamingDemodulator(
             config["low_cut_hz"], config["high_cut_hz"], iq_sample_rate_hz, ssb_decimation,
             numtaps=numtaps,

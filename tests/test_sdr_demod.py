@@ -153,6 +153,33 @@ class ChooseFmDecimationTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             MODULE.choose_fm_decimation(8000.0, deviation_hz=5000, channel_bandwidth_hz=16000)
 
+    def test_tolerates_real_hardware_clock_imprecision(self):
+        # Real PlutoSDR hardware asked for 128000 Hz commonly reports back
+        # 127999 Hz (~8 ppm off) due to PLL/crystal clock quantization, not a
+        # misconfiguration - this must still resolve the same as an exact
+        # 128000 Hz would.
+        stage1, stage2 = MODULE.choose_fm_decimation(127999.0, deviation_hz=5000, channel_bandwidth_hz=16000)
+        self.assertEqual(stage1, 4)
+        self.assertEqual(stage2, 4)
+
+    def test_still_rejects_a_rate_nowhere_near_a_multiple(self):
+        with self.assertRaises(ValueError):
+            MODULE.choose_fm_decimation(128500.0, deviation_hz=5000, channel_bandwidth_hz=16000)
+
+
+class MatchesRateMultipleTests(unittest.TestCase):
+    def test_exact_multiple(self):
+        self.assertEqual(MODULE.matches_rate_multiple(128000.0, 8000), 16)
+
+    def test_within_tolerance_of_multiple(self):
+        self.assertEqual(MODULE.matches_rate_multiple(127999.0, 8000), 16)
+
+    def test_far_from_any_multiple_returns_none(self):
+        self.assertIsNone(MODULE.matches_rate_multiple(100000.0, 8000))
+
+    def test_close_to_zero_returns_none(self):
+        self.assertIsNone(MODULE.matches_rate_multiple(1.0, 8000))
+
 
 class FmStreamingDemodulatorTests(unittest.TestCase):
     def test_recovers_audio_tone_frequency(self):
@@ -430,6 +457,20 @@ class BuildDemodulatorTests(unittest.TestCase):
         config = {"mode": "lsb", "low_cut_hz": -2700.0, "high_cut_hz": -300.0}
         demod = MODULE.build_demodulator(config, FakeBackend(), 128000.0, 8000, {"lsb", "usb"})
         self.assertEqual(len(demod.taps), 99)
+
+    def test_ssb_tolerates_real_hardware_clock_imprecision(self):
+        # Real hardware asked for 128000 Hz commonly reports back a value
+        # like 127999 Hz (PLL/crystal clock quantization), not a
+        # misconfiguration - this must still build a demodulator rather
+        # than raise.
+        config = {"mode": "lsb", "low_cut_hz": -2700.0, "high_cut_hz": -300.0}
+        demod = MODULE.build_demodulator(config, object(), 127999.0, 8000, {"lsb", "usb"})
+        self.assertIsInstance(demod, MODULE.StreamingDemodulator)
+
+    def test_ssb_still_rejects_a_rate_nowhere_near_a_multiple(self):
+        config = {"mode": "lsb", "low_cut_hz": -2700.0, "high_cut_hz": -300.0}
+        with self.assertRaises(ValueError):
+            MODULE.build_demodulator(config, object(), 128500.0, 8000, {"lsb", "usb"})
 
 
 class AudioToPcm16Tests(unittest.TestCase):
