@@ -38,6 +38,21 @@ def design_shifted_filter(low_cut_hz, high_cut_hz, sample_rate_hz, numtaps=DEFAU
     return (prototype * shift).astype(np.complex128)
 
 
+def design_lowpass_filter(bandwidth_hz, sample_rate_hz, numtaps=DEFAULT_NUMTAPS):
+    """Build a real-valued lowpass FIR filter (stored as complex128 for a
+    uniform lfilter interface with design_shifted_filter) isolating a
+    channel of the given total bandwidth centered on the tuned carrier
+    (0 Hz), with no frequency shift needed. This is the companion to
+    design_shifted_filter for modes whose channel isn't offset from the
+    carrier, e.g. NFM, as opposed to SSB's offset sideband.
+    """
+    if bandwidth_hz <= 0:
+        raise ValueError("bandwidth_hz must be positive")
+    half_bandwidth_hz = bandwidth_hz / 2.0
+    taps = firwin(numtaps, half_bandwidth_hz, fs=sample_rate_hz, window=("kaiser", 8.0))
+    return taps.astype(np.complex128)
+
+
 class StreamingDemodulator:
     """Converts complex IQ chunks into real audio samples, carrying FIR
     filter state and decimation phase across calls so chunk boundaries

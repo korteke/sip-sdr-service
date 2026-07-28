@@ -87,6 +87,51 @@ class DesignShiftedFilterTests(unittest.TestCase):
         self.assertGreater(rejection_db, 60)
 
 
+class DesignLowpassFilterTests(unittest.TestCase):
+    def test_rejects_non_positive_bandwidth(self):
+        with self.assertRaises(ValueError):
+            MODULE.design_lowpass_filter(0, 128000.0)
+
+    def test_returns_complex_taps_of_requested_length(self):
+        taps = MODULE.design_lowpass_filter(16000, 128000.0, numtaps=101)
+        self.assertEqual(len(taps), 101)
+        self.assertEqual(taps.dtype, np.complex128)
+
+    def test_passes_centered_tone_and_rejects_tone_outside_bandwidth(self):
+        fs = 128000.0
+        duration = 0.05
+        t = np.arange(int(fs * duration)) / fs
+        taps = MODULE.design_lowpass_filter(16000, fs, numtaps=257)
+
+        inside = np.exp(1j * 2 * np.pi * 2000 * t)    # within +/-8000 Hz half-bandwidth
+        outside = np.exp(1j * 2 * np.pi * 20000 * t)   # well outside
+
+        filtered_inside = np.convolve(inside, taps)[len(taps):-len(taps)]
+        filtered_outside = np.convolve(outside, taps)[len(taps):-len(taps)]
+
+        inside_amplitude = np.max(np.abs(filtered_inside))
+        outside_amplitude = np.max(np.abs(filtered_outside))
+        self.assertGreater(inside_amplitude, 0.8)
+        rejection_db = 20 * np.log10(inside_amplitude / outside_amplitude)
+        self.assertGreater(rejection_db, 40)
+
+    def test_symmetric_response_matches_positive_and_negative_offset(self):
+        fs = 128000.0
+        duration = 0.05
+        t = np.arange(int(fs * duration)) / fs
+        taps = MODULE.design_lowpass_filter(16000, fs, numtaps=257)
+
+        positive = np.exp(1j * 2 * np.pi * 3000 * t)
+        negative = np.exp(1j * 2 * np.pi * -3000 * t)
+
+        filtered_positive = np.convolve(positive, taps)[len(taps):-len(taps)]
+        filtered_negative = np.convolve(negative, taps)[len(taps):-len(taps)]
+
+        self.assertAlmostEqual(
+            np.max(np.abs(filtered_positive)), np.max(np.abs(filtered_negative)), delta=0.01,
+        )
+
+
 class StreamingDemodulatorTests(unittest.TestCase):
     def test_recovers_correct_frequency_for_lsb(self):
         fs = 128000.0
