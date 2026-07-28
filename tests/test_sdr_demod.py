@@ -308,6 +308,39 @@ class FmSquelchTests(unittest.TestCase):
         self.assertFalse(short_hang.squelch_open)
 
 
+class FmDeemphasisTests(unittest.TestCase):
+    def test_deemphasis_attenuates_high_frequency_relative_to_low(self):
+        raw_iq_rate_hz = 128000.0
+        stage1, stage2 = 4, 4
+        low_freq_hz = 300.0
+        high_freq_hz = 2500.0
+        deviation_hz = 3000.0
+        duration = 0.3
+        t = np.arange(int(raw_iq_rate_hz * duration)) / raw_iq_rate_hz
+
+        def make_iq(audio_freq_hz):
+            phase = -(deviation_hz / audio_freq_hz) * np.cos(2 * np.pi * audio_freq_hz * t)
+            return np.exp(1j * phase)
+
+        def peak_amplitude(audio_freq_hz, deemphasis_us):
+            demod = MODULE.FmStreamingDemodulator(
+                16000, raw_iq_rate_hz, stage1, stage2, deemphasis_us=deemphasis_us,
+            )
+            audio = demod.process(make_iq(audio_freq_hz))
+            audio = audio[len(audio) // 4:]
+            spectrum = np.abs(np.fft.rfft(audio * np.hanning(len(audio))))
+            return np.max(spectrum)
+
+        low_flat = peak_amplitude(low_freq_hz, None)
+        high_flat = peak_amplitude(high_freq_hz, None)
+        low_deemphasized = peak_amplitude(low_freq_hz, 6000.0)
+        high_deemphasized = peak_amplitude(high_freq_hz, 6000.0)
+
+        ratio_flat = high_flat / low_flat
+        ratio_deemphasized = high_deemphasized / low_deemphasized
+        self.assertLess(ratio_deemphasized, ratio_flat)
+
+
 class StreamingDemodulatorTests(unittest.TestCase):
     def test_recovers_correct_frequency_for_lsb(self):
         fs = 128000.0

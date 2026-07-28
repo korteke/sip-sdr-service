@@ -130,11 +130,15 @@ class FmStreamingDemodulator:
     final audio-rate output. An optional power-threshold squelch (with
     hang-time) gates the discriminator's output before the audio lowpass,
     muting audio when the channel-filtered IQ signal's power drops below
-    squelch_db.
+    squelch_db. An optional one-pole de-emphasis lowpass filter can then be
+    applied to that (squelch-gated) discriminator output, before the
+    antialiasing audio lowpass, when deemphasis_us is set -- for sources
+    that pre-emphasize audio before transmission.
     """
 
     def __init__(self, channel_bandwidth_hz, raw_iq_rate_hz, stage1_decimation, stage2_decimation,
-                 squelch_db=None, squelch_hang_ms=DEFAULT_SQUELCH_HANG_MS, numtaps=DEFAULT_NUMTAPS):
+                 squelch_db=None, squelch_hang_ms=DEFAULT_SQUELCH_HANG_MS, deemphasis_us=None,
+                 numtaps=DEFAULT_NUMTAPS):
         self.channel_taps = design_lowpass_filter(channel_bandwidth_hz, raw_iq_rate_hz, numtaps)
         self.channel_filter_state = np.zeros(numtaps - 1, dtype=np.complex128)
         self.stage1_decimation = stage1_decimation
@@ -155,6 +159,15 @@ class FmStreamingDemodulator:
         self.squelch_open = squelch_db is None
         self.squelch_hang_samples = int(squelch_hang_ms / 1000.0 * self.intermediate_rate_hz)
         self.squelch_hang_remaining = 0
+
+        if deemphasis_us:
+            tau_seconds = deemphasis_us * 1e-6
+            sample_period_seconds = 1.0 / self.intermediate_rate_hz
+            self.deemphasis_alpha = sample_period_seconds / (tau_seconds + sample_period_seconds)
+            self.deemphasis_state = np.zeros(1, dtype=np.float64)
+        else:
+            self.deemphasis_alpha = None
+            self.deemphasis_state = None
 
     def process(self, iq_chunk):
         """Return a 1-D float64 array of decimated real audio samples for
@@ -197,6 +210,12 @@ class FmStreamingDemodulator:
 
         if not self.squelch_open:
             instantaneous_frequency = np.zeros_like(instantaneous_frequency)
+
+        if self.deemphasis_alpha is not None:
+            instantaneous_frequency, self.deemphasis_state = lfilter(
+                [self.deemphasis_alpha], [1.0, -(1.0 - self.deemphasis_alpha)],
+                instantaneous_frequency, zi=self.deemphasis_state,
+            )
 
         audio, self.audio_filter_state = lfilter(
             self.audio_taps, [1.0], instantaneous_frequency, zi=self.audio_filter_state,
