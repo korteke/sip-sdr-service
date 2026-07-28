@@ -1,0 +1,24 @@
+services:
+  sip-sdr-service:
+    build:
+      context: .
+    container_name: sip-sdr-service
+    restart: unless-stopped
+    env_file:
+      - ${ENV_FILE:-.env}
+    ports:
+      - "${HOST_SIP_PORT:-5062}:5060/udp"
+      - "${HOST_SIP_PORT:-5062}:5060/tcp"
+      - "${RTP_START:-11000}-${RTP_END:-11100}:${RTP_START:-11000}-${RTP_END:-11100}/udp"
+    devices:
+      - "${SDR_DEVICE:-/dev/sdr-radio}:${SDR_DEVICE:-/dev/sdr-radio}"
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/sip-sdr-healthcheck"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL

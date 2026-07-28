@@ -1,0 +1,5 @@
+[general]
+rtpstart=${RTP_START}
+rtpend=${RTP_END}
+icesupport=false
+strictrtp=yes

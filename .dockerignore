@@ -1,0 +1,6 @@
+.env
+.git
+.DS_Store
+__pycache__
+tests
+.venv
