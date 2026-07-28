@@ -127,7 +127,10 @@ class FmStreamingDemodulator:
     sample across process() calls the same way StreamingDemodulator
     carries filter state, so chunk boundaries introduce no discontinuity.
     An audio lowpass and further ("stage 2") decimation then produce the
-    final audio-rate output.
+    final audio-rate output. An optional power-threshold squelch (with
+    hang-time) gates the discriminator's output before the audio lowpass,
+    muting audio when the channel-filtered IQ signal's power drops below
+    squelch_db.
     """
 
     def __init__(self, channel_bandwidth_hz, raw_iq_rate_hz, stage1_decimation, stage2_decimation,
@@ -169,7 +172,13 @@ class FmStreamingDemodulator:
         if len(decimated) == 0:
             return np.zeros(0, dtype=np.float64)
 
+        # Squelch state machine: open on strong signal, hold open during a
+        # hang window after signal drops, then close.
         if self.squelch_db is not None:
+            # Power is block-averaged over this call's samples, not a
+            # continuously-smoothed estimate -- squelch responsiveness is
+            # bounded by caller chunk size.
+            # 1e-12 floor avoids log10(0) on exact silence.
             chunk_power_db = 10 * np.log10(max(np.mean(np.abs(decimated) ** 2), 1e-12))
             if chunk_power_db >= self.squelch_db:
                 self.squelch_open = True

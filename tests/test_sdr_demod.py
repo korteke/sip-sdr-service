@@ -248,10 +248,11 @@ class FmSquelchTests(unittest.TestCase):
             16000, raw_iq_rate_hz, stage1, stage2, squelch_db=-20, squelch_hang_ms=100,
         )
         demod.process(signal)
-        demod.process(silence)
+        audio_during_hang = demod.process(silence)
         # hang time (100ms) exceeds the silence chunk's duration (20ms), so
         # squelch should still be open immediately after signal disappears.
         self.assertTrue(demod.squelch_open)
+        self.assertTrue(np.any(audio_during_hang != 0.0))
 
 
 class StreamingDemodulatorTests(unittest.TestCase):
