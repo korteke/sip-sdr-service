@@ -327,7 +327,7 @@ class FmDeemphasisTests(unittest.TestCase):
                 16000, raw_iq_rate_hz, stage1, stage2, deemphasis_us=deemphasis_us,
             )
             audio = demod.process(make_iq(audio_freq_hz))
-            audio = audio[len(audio) // 4:]
+            audio = audio[len(audio) // 4:]  # drop filter startup transient
             spectrum = np.abs(np.fft.rfft(audio * np.hanning(len(audio))))
             return np.max(spectrum)
 

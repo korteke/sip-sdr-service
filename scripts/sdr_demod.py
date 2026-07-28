@@ -122,18 +122,18 @@ class FmStreamingDemodulator:
     """Two-stage narrowband FM demodulator. A channel lowpass filter and
     partial ("stage 1") decimation bring the IQ signal to a rate wide
     enough to resolve the configured deviation without aliasing (see
-    choose_fm_decimation). A phase discriminator converts consecutive
+    choose_fm_decimation). A phase discriminator then converts consecutive
     complex samples to instantaneous frequency, carrying its previous
     sample across process() calls the same way StreamingDemodulator
     carries filter state, so chunk boundaries introduce no discontinuity.
-    An audio lowpass and further ("stage 2") decimation then produce the
-    final audio-rate output. An optional power-threshold squelch (with
-    hang-time) gates the discriminator's output before the audio lowpass,
-    muting audio when the channel-filtered IQ signal's power drops below
-    squelch_db. An optional one-pole de-emphasis lowpass filter can then be
-    applied to that (squelch-gated) discriminator output, before the
-    antialiasing audio lowpass, when deemphasis_us is set -- for sources
-    that pre-emphasize audio before transmission.
+    An optional power-threshold squelch (with hang-time) then gates that
+    discriminator output, muting audio when the channel-filtered IQ
+    signal's power drops below squelch_db. An optional one-pole
+    de-emphasis lowpass filter can then be applied to the (squelch-gated)
+    discriminator output, when deemphasis_us is set -- for sources that
+    pre-emphasize audio before transmission. Finally, an audio lowpass
+    (for antialiasing) and further ("stage 2") decimation produce the
+    final audio-rate output.
     """
 
     def __init__(self, channel_bandwidth_hz, raw_iq_rate_hz, stage1_decimation, stage2_decimation,
@@ -160,7 +160,11 @@ class FmStreamingDemodulator:
         self.squelch_hang_samples = int(squelch_hang_ms / 1000.0 * self.intermediate_rate_hz)
         self.squelch_hang_remaining = 0
 
-        if deemphasis_us:
+        # One-pole RC lowpass (backward-Euler discretization of tau*dy/dt + y = x):
+        # y[n] = alpha*x[n] + (1-alpha)*y[n-1], alpha = T/(tau+T). Larger tau ->
+        # smaller alpha -> more high-frequency rolloff, compensating for a
+        # transmitter's pre-emphasis boost.
+        if deemphasis_us is not None:
             tau_seconds = deemphasis_us * 1e-6
             sample_period_seconds = 1.0 / self.intermediate_rate_hz
             self.deemphasis_alpha = sample_period_seconds / (tau_seconds + sample_period_seconds)
