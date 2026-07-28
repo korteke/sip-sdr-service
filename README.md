@@ -164,7 +164,7 @@ channel bandwidth and a smaller frequency deviation (how far the carrier
 swings from center to encode audio). Unlike `lsb`/`usb`/`auto`, `nfm` ignores
 `SDR_LOW_CUT_HZ`/`SDR_HIGH_CUT_HZ` and instead reads `SDR_FM_DEVIATION_HZ`
 and `SDR_FM_CHANNEL_BANDWIDTH_HZ` (defaults: 5000 and 16000, matching Marine
-VHF's standard 16kHz-bandwidth narrowband FM, ITU designator 16K0G3E).
+VHF's standard 16kHz-bandwidth narrowband FM, ITU designator 16K0F3E).
 Optional `SDR_SQUELCH_DB` mutes output below a
 power threshold (unset by default — tune by ear/eye during bring-up, since
 the right value depends on antenna/gain/hardware); `SDR_SQUELCH_HANG_MS`
