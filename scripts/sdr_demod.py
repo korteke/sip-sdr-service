@@ -7,6 +7,7 @@ from scipy.signal import firwin, lfilter
 SIDEBAND_CROSSOVER_KHZ = 10000.0
 DEFAULT_NUMTAPS = 257
 FM_INTERMEDIATE_RATE_MARGIN = 1.5  # headroom above Carson's-rule bandwidth, for filter roll-off
+AUDIO_CUTOFF_MARGIN = 0.9  # headroom below stage-2 Nyquist, for filter roll-off
 
 
 def resolve_mode(mode, frequency_khz):
@@ -137,11 +138,12 @@ class FmStreamingDemodulator:
 
         self.intermediate_rate_hz = raw_iq_rate_hz / stage1_decimation
         self.discriminator_scale = self.intermediate_rate_hz / (2 * np.pi)
+        # arbitrary unit-magnitude reference; the resulting first sample is startup transient, discarded by callers
         self.previous_sample = 1.0 + 0.0j
 
         self.stage2_decimation = stage2_decimation
-        audio_cutoff_hz = 0.9 * self.intermediate_rate_hz / (2 * stage2_decimation)
-        self.audio_taps = firwin(numtaps, audio_cutoff_hz, fs=self.intermediate_rate_hz)
+        audio_cutoff_hz = AUDIO_CUTOFF_MARGIN * self.intermediate_rate_hz / (2 * stage2_decimation)
+        self.audio_taps = firwin(numtaps, audio_cutoff_hz, fs=self.intermediate_rate_hz, window=("kaiser", 8.0))
         self.audio_filter_state = np.zeros(numtaps - 1, dtype=np.float64)
         self.stage2_phase = 0
 
