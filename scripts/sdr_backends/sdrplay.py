@@ -12,7 +12,6 @@ DRIVER_KEY = "sdrplay"
 DEVICE_SAMPLE_RATE_HZ = 2048000.0
 HW_DECIMATION = 16
 IQ_SAMPLE_RATE_HZ = DEVICE_SAMPLE_RATE_HZ / HW_DECIMATION  # 128000.0
-SOFTWARE_DECIMATION = 16  # IQ_SAMPLE_RATE_HZ / SOFTWARE_DECIMATION == 8000
 NUMTAPS = 257  # sized for the 128000 Hz effective IQ rate above
 
 ANTENNA_CHOICES = {"a", "b", "hiz"}
@@ -87,4 +86,4 @@ def open_device(frequency_hz, backend_config):
     stream = device.setupStream(SOAPY_SDR_RX, SOAPY_SDR_CF32)
     device.activateStream(stream)
     actual_iq_sample_rate_hz = device.getSampleRate(SOAPY_SDR_RX, 0) / HW_DECIMATION
-    return device, stream, actual_iq_sample_rate_hz, SOFTWARE_DECIMATION
+    return device, stream, actual_iq_sample_rate_hz

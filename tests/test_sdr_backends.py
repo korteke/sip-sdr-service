@@ -36,9 +36,9 @@ class SdrplayBackendConfigTests(unittest.TestCase):
             config = SDRPLAY.load_backend_config()
         self.assertTrue(config["bias_t"])
 
-    def test_driver_key_and_rate_arithmetic(self):
+    def test_driver_key_and_rate(self):
         self.assertEqual(SDRPLAY.DRIVER_KEY, "sdrplay")
-        self.assertEqual(SDRPLAY.IQ_SAMPLE_RATE_HZ / SDRPLAY.SOFTWARE_DECIMATION, 8000.0)
+        self.assertEqual(SDRPLAY.IQ_SAMPLE_RATE_HZ, 128000.0)
 
 
 RTLSDR_SPEC = importlib.util.spec_from_file_location("sdr_backends.rtlsdr", "scripts/sdr_backends/rtlsdr.py")
@@ -64,9 +64,9 @@ class RtlsdrBackendConfigTests(unittest.TestCase):
         self.assertEqual(config["gain_mode"], "manual")
         self.assertEqual(config["gain_db"], 42.5)
 
-    def test_driver_key_and_rate_arithmetic(self):
+    def test_driver_key_and_rate(self):
         self.assertEqual(RTLSDR.DRIVER_KEY, "rtlsdr")
-        self.assertEqual(RTLSDR.DEVICE_SAMPLE_RATE_HZ / RTLSDR.SOFTWARE_DECIMATION, 8000.0)
+        self.assertEqual(RTLSDR.DEVICE_SAMPLE_RATE_HZ, 256000.0)
 
 
 PLUTOSDR_SPEC = importlib.util.spec_from_file_location("sdr_backends.plutosdr", "scripts/sdr_backends/plutosdr.py")
@@ -92,9 +92,9 @@ class PlutosdrBackendConfigTests(unittest.TestCase):
         self.assertEqual(config["gain_mode"], "manual")
         self.assertEqual(config["gain_db"], 15.0)
 
-    def test_driver_key_and_rate_arithmetic(self):
+    def test_driver_key_and_rate(self):
         self.assertEqual(PLUTOSDR.DRIVER_KEY, "plutosdr")
-        self.assertEqual(PLUTOSDR.DEVICE_SAMPLE_RATE_HZ / PLUTOSDR.SOFTWARE_DECIMATION, 8000.0)
+        self.assertEqual(PLUTOSDR.DEVICE_SAMPLE_RATE_HZ, 128000.0)
 
 
 if __name__ == "__main__":

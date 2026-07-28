@@ -14,7 +14,6 @@ DRIVER_KEY = "plutosdr"
 # effective rate so the demod filter design is reused without re-verifying
 # it at a different input rate.
 DEVICE_SAMPLE_RATE_HZ = 128000.0
-SOFTWARE_DECIMATION = 16  # DEVICE_SAMPLE_RATE_HZ / SOFTWARE_DECIMATION == 8000
 NUMTAPS = 257  # sized for the 128000 Hz IQ rate above
 
 GAIN_MODE_CHOICES = {"agc", "manual"}
@@ -53,4 +52,4 @@ def open_device(frequency_hz, backend_config):
     stream = device.setupStream(SOAPY_SDR_RX, SOAPY_SDR_CF32)
     device.activateStream(stream)
     actual_iq_sample_rate_hz = device.getSampleRate(SOAPY_SDR_RX, 0)
-    return device, stream, actual_iq_sample_rate_hz, SOFTWARE_DECIMATION
+    return device, stream, actual_iq_sample_rate_hz

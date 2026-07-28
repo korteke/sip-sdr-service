@@ -13,7 +13,6 @@ DRIVER_KEY = "rtlsdr"
 # 256kHz sits below the RTL-SDR's documented unreliable range of roughly
 # 300-900kHz (verify against your specific tuner chip during bring-up).
 DEVICE_SAMPLE_RATE_HZ = 256000.0
-SOFTWARE_DECIMATION = 32  # DEVICE_SAMPLE_RATE_HZ / SOFTWARE_DECIMATION == 8000
 # 256000 Hz needs roughly twice the taps of the 128000 Hz backends to hold
 # the same opposite-sideband rejection, since design_shifted_filter's
 # transition width scales with sample rate for a fixed tap count. Measured
@@ -56,4 +55,4 @@ def open_device(frequency_hz, backend_config):
     stream = device.setupStream(SOAPY_SDR_RX, SOAPY_SDR_CF32)
     device.activateStream(stream)
     actual_iq_sample_rate_hz = device.getSampleRate(SOAPY_SDR_RX, 0)
-    return device, stream, actual_iq_sample_rate_hz, SOFTWARE_DECIMATION
+    return device, stream, actual_iq_sample_rate_hz
