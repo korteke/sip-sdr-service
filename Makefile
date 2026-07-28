@@ -18,16 +18,16 @@ calls:
 	docker compose logs --no-log-prefix | grep 'CALL_START\|CALL_END'
 
 listeners:
-	docker compose exec sip-sdr-service asterisk -rx "group show channels"
+	docker compose exec --user asterisk sip-sdr-service asterisk -rx "group show channels"
 
 status:
 	docker compose ps
-	docker compose exec sip-sdr-service asterisk -rx "pjsip show registrations"
-	docker compose exec sip-sdr-service asterisk -rx "moh show classes"
-	docker compose exec sip-sdr-service asterisk -rx "group show channels"
+	docker compose exec --user asterisk sip-sdr-service asterisk -rx "pjsip show registrations"
+	docker compose exec --user asterisk sip-sdr-service asterisk -rx "moh show classes"
+	docker compose exec --user asterisk sip-sdr-service asterisk -rx "group show channels"
 
 shell:
-	docker compose exec sip-sdr-service asterisk -rvvv
+	docker compose exec --user asterisk sip-sdr-service asterisk -rvvv
 
 venv:
 	test -d .venv || python3 -m venv .venv
@@ -43,4 +43,4 @@ test: validate
 	$(VENV_PYTHON) -m unittest discover -s tests -v
 
 test-stream:
-	docker compose exec sip-sdr-service /usr/local/bin/test-sdr-receiver
+	docker compose exec --user asterisk sip-sdr-service /usr/local/bin/test-sdr-receiver

@@ -11,6 +11,7 @@ asterisk = subprocess.run(
     stdout=subprocess.DEVNULL,
     stderr=subprocess.DEVNULL,
     check=False,
+    user="asterisk",
 )
 if asterisk.returncode != 0:
     raise SystemExit(1)

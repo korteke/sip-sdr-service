@@ -98,9 +98,20 @@ external_signaling_port=$HOST_SIP_PORT"
 fi
 export EXTERNAL_TRANSPORT_SETTINGS="$external_transport_settings"
 
-envsubst < /opt/sip-sdr-service/pjsip.conf.template > /etc/asterisk/pjsip.conf
-envsubst < /opt/sip-sdr-service/rtp.conf.template > /etc/asterisk/rtp.conf
-chmod 0600 /etc/asterisk/pjsip.conf
+# Written as the asterisk user, not root: Asterisk's own module loading
+# (chan_pjsip parsing pjsip.conf, etc.) happens after its internal
+# runuser/rungroup=asterisk privilege drop (config/asterisk.conf), so a
+# root-owned pjsip.conf - even readable-by-root only, as chmod 0600 below
+# intends - would be unreadable to Asterisk regardless of who wrote it.
+# Writing as asterisk (who owns /etc/asterisk by default) means the
+# resulting files are already owned by the user that actually needs to
+# read them, with no extra chown step required.
+runuser -u asterisk -- sh -c '
+    set -eu
+    envsubst < /opt/sip-sdr-service/pjsip.conf.template > /etc/asterisk/pjsip.conf
+    envsubst < /opt/sip-sdr-service/rtp.conf.template > /etc/asterisk/rtp.conf
+    chmod 0600 /etc/asterisk/pjsip.conf
+'
 
 if [ "$SDR_DRIVER" = "sdrplay" ]; then
     echo "Starting SDRplay API service"
