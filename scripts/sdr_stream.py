@@ -259,7 +259,7 @@ def main():
             if device_stale:
                 disconnect("audio_stale")
 
-            if now >= deadline:
+            while now >= deadline:
                 if len(pcm_buffer) >= FRAME_BYTES:
                     frame = bytes(pcm_buffer[:FRAME_BYTES])
                     del pcm_buffer[:FRAME_BYTES]
