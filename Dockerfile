@@ -94,7 +94,10 @@ RUN chmod 0755 \
     && ln -s /opt/sip-sdr-service/sdr_stream.py /usr/local/bin/sdr-stream \
     && mkdir -p /run/asterisk /run/sip-sdr /var/log/asterisk \
     && chown -R asterisk:asterisk \
-        /etc/asterisk /run/asterisk /run/sip-sdr /var/lib/asterisk /var/log/asterisk
+        /run/asterisk /run/sip-sdr /var/lib/asterisk /var/log/asterisk \
+    && chown root:root /etc/asterisk \
+    && rm -f /etc/asterisk/pjsip.conf /etc/asterisk/rtp.conf \
+    && usermod -aG plugdev asterisk
 
 # No USER directive here: the entrypoint needs root to start
 # sdrplay_apiService (when SDR_DRIVER=sdrplay) and access USB device nodes.
