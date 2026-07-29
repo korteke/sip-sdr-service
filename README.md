@@ -1,6 +1,8 @@
 # SIP SDR Service
 
 Original version by Jouni / OH3CUF: <https://codeberg.org/jii/sip-kiwisdr-3699>
+— an implementation for KiwiSDR and Web-888 receivers. This fork replaces
+that with local USB SDR support (SDRplay/RTL-SDR/PlutoSDR) via SoapySDR.
 
 This standalone Docker project registers a dedicated SIP number, answers
 incoming calls, and plays live audio from a local USB SDR — SDRplay
@@ -12,9 +14,10 @@ and its RTP range is 11000-11100.
 ## How it works
 
 `scripts/sdr_stream.py` opens the selected SDR via SoapySDR, tunes it, and
-demodulates LSB or USB directly from the raw IQ samples using a small
-NumPy/SciPy-based single-sideband demodulator (`scripts/sdr_demod.py`).
-Hardware-specific details (antenna selection, gain control, sample-rate
+demodulates directly from the raw IQ samples using a small NumPy/SciPy-based
+demodulator (`scripts/sdr_demod.py`) — single-sideband (`lsb`/`usb`/`auto`),
+narrowband or wideband FM (`nfm`/`wfm`), or AM (`am`), selected via
+`SDR_MODE`. Hardware-specific details (antenna selection, gain control, sample-rate
 strategy) live in small per-backend adapter modules under
 `scripts/sdr_backends/` (`sdrplay.py`, `rtlsdr.py`, `plutosdr.py`) — the
 demodulator and the pacing/reconnect logic around it are identical
@@ -173,6 +176,58 @@ at the threshold. Optional `SDR_FM_DEEMPHASIS_US` applies a de-emphasis
 filter if your source pre-emphasizes audio (unset/flat by default, since
 this varies by radio/standard for two-way FM).
 
+`SDR_MODE` can also be `wfm` for broadcast-style wideband FM (e.g. tuning
+to a normal FM radio station like Yle Suomi at 94.0MHz). It shares the
+same `SDR_FM_DEVIATION_HZ`/`SDR_FM_CHANNEL_BANDWIDTH_HZ`/
+`SDR_FM_DEEMPHASIS_US` env vars as `nfm`, but with different defaults:
+75000 Hz deviation, 200000 Hz channel bandwidth, and a real default
+de-emphasis of 50µs (EU/Finland broadcast standard — override
+`SDR_FM_DEEMPHASIS_US` to 75 for US-style stations). Unlike `nfm`, whose
+de-emphasis is left flat by default since two-way FM standards vary,
+broadcast FM's de-emphasis is standardized enough by region to default to
+a real value. Because broadcast FM's ±75kHz deviation needs a wider raw
+IQ sample rate than the narrowband modes, `wfm` requests a different rate
+from the SDR (512kHz instead of 128/256kHz) — this is handled
+automatically per backend, no extra configuration needed. One gotcha when
+switching an existing `.env` to `wfm`: comment out (or update) any
+`SDR_FM_DEVIATION_HZ`/`SDR_FM_CHANNEL_BANDWIDTH_HZ` lines left over from
+`nfm`. Docker Compose loads `.env` wholesale into the container, so those
+values override `wfm`'s wideband defaults for every mode and produce
+badly distorted, aliased audio.
+
+`nfm`/`wfm`'s demodulator output is normalized to roughly ±1.0 at full
+deviation, unlike `lsb`/`usb`/`am`'s unnormalized raw IQ amplitude
+(typically well below 1.0). `SDR_AUDIO_GAIN` therefore defaults to `1.0`
+for `nfm`/`wfm` and `20.0` for the other modes — leave it unset (commented
+out in `.env.example`) unless you deliberately want to override that
+per-mode default.
+
+`SDR_MODE` can also be `am` for amplitude modulation — used by VHF
+airband/ATC traffic (118-137MHz) among others, which keeps AM
+specifically for its resistance to the capture effect. Unlike
+`nfm`/`wfm`, `am` ignores `SDR_FM_*` and instead reads
+`SDR_AM_CHANNEL_BANDWIDTH_HZ` (default 25000, covering both 8.33kHz and
+25kHz airband channel spacing). `SDR_SQUELCH_DB`/`SDR_SQUELCH_HANG_MS`
+apply here too and are particularly useful for ATC's bursty
+transmissions.
+
+### Quick reference: example `.env` settings by frequency
+
+| What you want to hear | `SDR_MODE` | `SDR_FREQUENCY_KHZ` | Anything else to set |
+|---|---|---|---|
+| Marine VHF Ch16 — distress/calling (156.800MHz) | `nfm` | `156800` | defaults already match this |
+| Ham/PMR narrowband FM, any frequency | `nfm` | your frequency | adjust `SDR_FM_DEVIATION_HZ`/`SDR_FM_CHANNEL_BANDWIDTH_HZ` if your channel isn't the 5000/16000 Hz default |
+| FM broadcast radio (e.g. 107.6MHz) | `wfm` | `107600` | comment out any `SDR_FM_DEVIATION_HZ`/`SDR_FM_CHANNEL_BANDWIDTH_HZ` left over from `nfm` — see the gotcha above |
+| VHF airband/ATC (e.g. 119.1MHz approach) | `am` | `119100` | set `SDR_AM_CHANNEL_BANDWIDTH_HZ=8330` if your region uses 8.33kHz channel spacing instead of 25kHz |
+| Ham HF SSB below 10MHz (e.g. 80m) | `lsb` (or `auto`) | `3699` | |
+| Ham HF SSB at/above 10MHz (e.g. 20m) | `usb` (or `auto`) | `14074` | |
+
+`auto` resolves to LSB below 10,000kHz and USB at/above, so either HF row
+above works without changing `SDR_MODE` when retuning across that
+boundary. Every row here is real-hardware verified (via PlutoSDR) except
+the HF SSB examples, which predate this project's SDR-agnostic backend
+support.
+
 The project is SIP-provider independent. Set `SIP_SERVER`, the account
 fields, ports, and any external address to values supplied by your own
 provider and network administrator.
@@ -194,9 +249,12 @@ Music-on-Hold class. Its logs include:
 
 ```text
 SDR_CONNECT ...
+SDR_CONNECT_RATE iq_sample_rate_hz=...
 SDR_AUDIO_ACTIVE
 SDR_DISCONNECTED reason=... retry_seconds=...
 ```
+
+`SDR_CONNECT_RATE` reports the actual IQ sample rate the device negotiated — useful for confirming `wfm` actually got its wider rate during bring-up.
 
 Test receiver access independently (20-second default timeout, overridable
 via `SDR_TEST_TIMEOUT_SECONDS`):

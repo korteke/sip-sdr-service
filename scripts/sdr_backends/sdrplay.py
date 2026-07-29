@@ -14,6 +14,19 @@ HW_DECIMATION = 16
 IQ_SAMPLE_RATE_HZ = DEVICE_SAMPLE_RATE_HZ / HW_DECIMATION  # 128000.0
 NUMTAPS = 257  # sized for the 128000 Hz effective IQ rate above
 
+# wfm needs a much wider effective rate to represent broadcast FM's
+# +/-75kHz deviation. The ADC rate (DEVICE_SAMPLE_RATE_HZ) stays fixed;
+# only the on-device decimation setting changes per mode.
+WFM_HW_DECIMATION = 4
+WFM_IQ_SAMPLE_RATE_HZ = DEVICE_SAMPLE_RATE_HZ / WFM_HW_DECIMATION  # 512000.0
+# See scripts/sdr_backends/plutosdr.py's WFM_NUMTAPS for why this is
+# lower than NUMTAPS despite the higher effective rate.
+WFM_NUMTAPS = 129
+
+
+def hw_decimation_for_mode(mode):
+    return WFM_HW_DECIMATION if mode == "wfm" else HW_DECIMATION
+
 ANTENNA_CHOICES = {"a", "b", "hiz"}
 GAIN_MODE_CHOICES = {"agc", "manual"}
 ANTENNA_NAMES = {"a": "Antenna A", "b": "Antenna B", "hiz": "Hi-Z"}
@@ -34,16 +47,17 @@ def load_backend_config():
     }
 
 
-def open_device(frequency_hz, backend_config):
+def open_device(frequency_hz, mode, backend_config):
     import SoapySDR
     from SoapySDR import SOAPY_SDR_RX, SOAPY_SDR_CF32
 
+    hw_decimation = hw_decimation_for_mode(mode)
     device = SoapySDR.Device({"driver": DRIVER_KEY})
     device.setSampleRate(SOAPY_SDR_RX, 0, DEVICE_SAMPLE_RATE_HZ)
     device.setFrequency(SOAPY_SDR_RX, 0, frequency_hz)
 
     try:
-        device.writeSetting("decimation", str(HW_DECIMATION))
+        device.writeSetting("decimation", str(hw_decimation))
     except RuntimeError as error:
         print(f"SDR_DECIMATION_SETTING_FAILED error={error}", file=sys.stderr, flush=True)
 
@@ -85,5 +99,5 @@ def open_device(frequency_hz, backend_config):
 
     stream = device.setupStream(SOAPY_SDR_RX, SOAPY_SDR_CF32)
     device.activateStream(stream)
-    actual_iq_sample_rate_hz = device.getSampleRate(SOAPY_SDR_RX, 0) / HW_DECIMATION
+    actual_iq_sample_rate_hz = device.getSampleRate(SOAPY_SDR_RX, 0) / hw_decimation
     return device, stream, actual_iq_sample_rate_hz

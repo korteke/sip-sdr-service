@@ -40,6 +40,17 @@ class SdrplayBackendConfigTests(unittest.TestCase):
         self.assertEqual(SDRPLAY.DRIVER_KEY, "sdrplay")
         self.assertEqual(SDRPLAY.IQ_SAMPLE_RATE_HZ, 128000.0)
 
+    def test_hw_decimation_for_mode_is_unchanged_for_existing_modes(self):
+        self.assertEqual(SDRPLAY.hw_decimation_for_mode("nfm"), 16)
+        self.assertEqual(SDRPLAY.hw_decimation_for_mode("lsb"), 16)
+
+    def test_hw_decimation_for_mode_wfm_gives_512khz(self):
+        self.assertEqual(SDRPLAY.hw_decimation_for_mode("wfm"), 4)
+        self.assertEqual(SDRPLAY.DEVICE_SAMPLE_RATE_HZ / SDRPLAY.hw_decimation_for_mode("wfm"), 512000.0)
+
+    def test_wfm_iq_sample_rate_constant(self):
+        self.assertEqual(SDRPLAY.WFM_IQ_SAMPLE_RATE_HZ, 512000.0)
+
 
 RTLSDR_SPEC = importlib.util.spec_from_file_location("sdr_backends.rtlsdr", "scripts/sdr_backends/rtlsdr.py")
 RTLSDR = importlib.util.module_from_spec(RTLSDR_SPEC)
@@ -68,6 +79,13 @@ class RtlsdrBackendConfigTests(unittest.TestCase):
         self.assertEqual(RTLSDR.DRIVER_KEY, "rtlsdr")
         self.assertEqual(RTLSDR.DEVICE_SAMPLE_RATE_HZ, 256000.0)
 
+    def test_sample_rate_for_mode_is_unchanged_for_existing_modes(self):
+        self.assertEqual(RTLSDR.sample_rate_for_mode("nfm"), 256000.0)
+        self.assertEqual(RTLSDR.sample_rate_for_mode("lsb"), 256000.0)
+
+    def test_sample_rate_for_mode_wfm_is_higher(self):
+        self.assertEqual(RTLSDR.sample_rate_for_mode("wfm"), 512000.0)
+
 
 PLUTOSDR_SPEC = importlib.util.spec_from_file_location("sdr_backends.plutosdr", "scripts/sdr_backends/plutosdr.py")
 PLUTOSDR = importlib.util.module_from_spec(PLUTOSDR_SPEC)
@@ -95,6 +113,14 @@ class PlutosdrBackendConfigTests(unittest.TestCase):
     def test_driver_key_and_rate(self):
         self.assertEqual(PLUTOSDR.DRIVER_KEY, "plutosdr")
         self.assertEqual(PLUTOSDR.DEVICE_SAMPLE_RATE_HZ, 128000.0)
+
+    def test_sample_rate_for_mode_is_unchanged_for_existing_modes(self):
+        self.assertEqual(PLUTOSDR.sample_rate_for_mode("nfm"), 128000.0)
+        self.assertEqual(PLUTOSDR.sample_rate_for_mode("lsb"), 128000.0)
+        self.assertEqual(PLUTOSDR.sample_rate_for_mode("usb"), 128000.0)
+
+    def test_sample_rate_for_mode_wfm_is_higher(self):
+        self.assertEqual(PLUTOSDR.sample_rate_for_mode("wfm"), 512000.0)
 
 
 if __name__ == "__main__":

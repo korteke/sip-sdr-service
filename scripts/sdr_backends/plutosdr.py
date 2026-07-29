@@ -16,7 +16,23 @@ DRIVER_KEY = "plutosdr"
 DEVICE_SAMPLE_RATE_HZ = 128000.0
 NUMTAPS = 257  # sized for the 128000 Hz IQ rate above
 
+# wfm needs a much wider raw rate to represent broadcast FM's +/-75kHz
+# deviation without exceeding the complex-IQ Nyquist ceiling
+# (sample_rate_hz/2). 512000 Hz clears the ~300kHz Carson's-rule floor
+# for 75000 Hz deviation / 200000 Hz channel bandwidth with solid margin,
+# and is a clean 64x multiple of the 8000 Hz output rate.
+WFM_DEVICE_SAMPLE_RATE_HZ = 512000.0
+# WFM's channel is far wider relative to its sample rate than NFM's is at
+# 128000 Hz, so it needs fewer taps for equivalent selectivity despite the
+# higher rate -- verified empirically in tests/test_sdr_demod.py's
+# test_wfm_rate_needs_fewer_taps_for_equivalent_rejection.
+WFM_NUMTAPS = 129
+
 GAIN_MODE_CHOICES = {"agc", "manual"}
+
+
+def sample_rate_for_mode(mode):
+    return WFM_DEVICE_SAMPLE_RATE_HZ if mode == "wfm" else DEVICE_SAMPLE_RATE_HZ
 
 
 def load_backend_config():
@@ -28,12 +44,12 @@ def load_backend_config():
     }
 
 
-def open_device(frequency_hz, backend_config):
+def open_device(frequency_hz, mode, backend_config):
     import SoapySDR
     from SoapySDR import SOAPY_SDR_RX, SOAPY_SDR_CF32
 
     device = SoapySDR.Device({"driver": DRIVER_KEY})
-    device.setSampleRate(SOAPY_SDR_RX, 0, DEVICE_SAMPLE_RATE_HZ)
+    device.setSampleRate(SOAPY_SDR_RX, 0, sample_rate_for_mode(mode))
     device.setFrequency(SOAPY_SDR_RX, 0, frequency_hz)
 
     if backend_config["gain_mode"] == "agc":

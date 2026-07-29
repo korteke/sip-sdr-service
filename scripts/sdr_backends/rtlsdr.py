@@ -19,6 +19,18 @@ DEVICE_SAMPLE_RATE_HZ = 256000.0
 # with tests/test_sdr_demod.py: ~91dB rejection at 513 taps vs ~21dB at 257.
 NUMTAPS = 513
 
+# wfm needs a much wider raw rate to represent broadcast FM's +/-75kHz
+# deviation -- see scripts/sdr_backends/plutosdr.py's
+# WFM_DEVICE_SAMPLE_RATE_HZ for the full rationale (same value used here
+# so WFM_NUMTAPS can be shared/verified once across backends).
+WFM_DEVICE_SAMPLE_RATE_HZ = 512000.0
+WFM_NUMTAPS = 129
+
+
+def sample_rate_for_mode(mode):
+    return WFM_DEVICE_SAMPLE_RATE_HZ if mode == "wfm" else DEVICE_SAMPLE_RATE_HZ
+
+
 GAIN_MODE_CHOICES = {"agc", "manual"}
 
 
@@ -31,12 +43,12 @@ def load_backend_config():
     }
 
 
-def open_device(frequency_hz, backend_config):
+def open_device(frequency_hz, mode, backend_config):
     import SoapySDR
     from SoapySDR import SOAPY_SDR_RX, SOAPY_SDR_CF32
 
     device = SoapySDR.Device({"driver": DRIVER_KEY})
-    device.setSampleRate(SOAPY_SDR_RX, 0, DEVICE_SAMPLE_RATE_HZ)
+    device.setSampleRate(SOAPY_SDR_RX, 0, sample_rate_for_mode(mode))
     device.setFrequency(SOAPY_SDR_RX, 0, frequency_hz)
 
     if backend_config["gain_mode"] == "agc":

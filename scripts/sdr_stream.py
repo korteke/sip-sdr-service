@@ -24,8 +24,29 @@ STATUS_PATH = Path("/run/sip-sdr/stream.json")
 READ_CHUNK_SAMPLES = 4096
 
 DRIVER_CHOICES = {"sdrplay", "rtlsdr", "plutosdr"}
-MODE_CHOICES = {"lsb", "usb", "auto", "nfm"}
+MODE_CHOICES = {"lsb", "usb", "auto", "nfm", "wfm", "am"}
 SSB_MODES = {"lsb", "usb"}
+
+
+def default_audio_gain_for_mode(mode):
+    """FM's demodulator output is normalized to roughly +/-1.0 at full
+    deviation (see sdr_demod.FmStreamingDemodulator), while SSB/AM output
+    is unnormalized raw IQ amplitude, typically well below 1.0 and needing
+    a much larger gain to reach an audible level. One fixed SDR_AUDIO_GAIN
+    default can't suit both scales.
+    """
+    return 1.0 if mode in sdr_demod.FM_MODES else 20.0
+
+
+def _load_squelch_config():
+    squelch_setting = os.environ.get("SDR_SQUELCH_DB", "").strip()
+    squelch_db = float(squelch_setting) if squelch_setting else None
+
+    squelch_hang_ms = env_float("SDR_SQUELCH_HANG_MS", 200)
+    if squelch_hang_ms <= 0:
+        raise ValueError("SDR_SQUELCH_HANG_MS must be positive")
+
+    return squelch_db, squelch_hang_ms
 
 
 def load_config():
@@ -61,27 +82,34 @@ def load_config():
             config["low_cut_hz"], config["high_cut_hz"] = -magnitude_high, -magnitude_low
         else:
             config["low_cut_hz"], config["high_cut_hz"] = magnitude_low, magnitude_high
-    elif mode == "nfm":
-        deviation_hz = env_float("SDR_FM_DEVIATION_HZ", 5000)
-        channel_bandwidth_hz = env_float("SDR_FM_CHANNEL_BANDWIDTH_HZ", 16000)
+    elif mode in sdr_demod.FM_MODES:
+        if mode == "wfm":
+            default_deviation_hz, default_channel_bandwidth_hz, default_deemphasis_us = 75000, 200000, 50.0
+        else:
+            default_deviation_hz, default_channel_bandwidth_hz, default_deemphasis_us = 5000, 16000, None
+
+        deviation_hz = env_float("SDR_FM_DEVIATION_HZ", default_deviation_hz)
+        channel_bandwidth_hz = env_float("SDR_FM_CHANNEL_BANDWIDTH_HZ", default_channel_bandwidth_hz)
         if deviation_hz <= 0:
             raise ValueError("SDR_FM_DEVIATION_HZ must be positive")
         if channel_bandwidth_hz <= 0:
             raise ValueError("SDR_FM_CHANNEL_BANDWIDTH_HZ must be positive")
 
-        # squelch_db/deemphasis_us: None means "feature disabled", matching
-        # FmStreamingDemodulator's own optional-parameter contract (see
-        # scripts/sdr_demod.py). The other three fields are structural
-        # parameters the demodulator always needs a value for.
-        squelch_setting = os.environ.get("SDR_SQUELCH_DB", "").strip()
-        squelch_db = float(squelch_setting) if squelch_setting else None
+        squelch_db, squelch_hang_ms = _load_squelch_config()
 
-        squelch_hang_ms = env_float("SDR_SQUELCH_HANG_MS", 200)
-        if squelch_hang_ms <= 0:
-            raise ValueError("SDR_SQUELCH_HANG_MS must be positive")
-
+        # deemphasis_us: nfm defaults to None ("feature disabled"), matching
+        # FmStreamingDemodulator's own optional-parameter contract, since
+        # two-way FM de-emphasis standards vary too much to guess. wfm gets
+        # a real default since broadcast FM's de-emphasis is standardized
+        # by region (50us EU/Finland, 75us US) -- either way, an explicit
+        # SDR_FM_DEEMPHASIS_US always wins.
         deemphasis_setting = os.environ.get("SDR_FM_DEEMPHASIS_US", "").strip()
-        deemphasis_us = float(deemphasis_setting) if deemphasis_setting else None
+        if deemphasis_setting:
+            deemphasis_us = float(deemphasis_setting)
+        elif default_deemphasis_us is not None:
+            deemphasis_us = default_deemphasis_us
+        else:
+            deemphasis_us = None
         if deemphasis_us is not None and deemphasis_us <= 0:
             raise ValueError("SDR_FM_DEEMPHASIS_US must be positive")
 
@@ -91,6 +119,18 @@ def load_config():
             "squelch_db": squelch_db,
             "squelch_hang_ms": squelch_hang_ms,
             "deemphasis_us": deemphasis_us,
+        })
+    elif mode == "am":
+        channel_bandwidth_hz = env_float("SDR_AM_CHANNEL_BANDWIDTH_HZ", 25000)
+        if channel_bandwidth_hz <= 0:
+            raise ValueError("SDR_AM_CHANNEL_BANDWIDTH_HZ must be positive")
+
+        squelch_db, squelch_hang_ms = _load_squelch_config()
+
+        config.update({
+            "channel_bandwidth_hz": channel_bandwidth_hz,
+            "squelch_db": squelch_db,
+            "squelch_hang_ms": squelch_hang_ms,
         })
     else:
         raise AssertionError(f"unhandled mode {mode!r}: MODE_CHOICES/SSB_MODES may be out of sync")
@@ -139,7 +179,7 @@ def main():
     config = load_config()
     backend = config["backend"]
     frequency_hz = config["frequency_khz"] * 1000.0
-    audio_gain = env_float("SDR_AUDIO_GAIN", 20.0)
+    audio_gain = env_float("SDR_AUDIO_GAIN", default_audio_gain_for_mode(config["mode"]))
 
     demodulator = None
     stopping = False
@@ -195,7 +235,11 @@ def main():
                         file=sys.stderr, flush=True,
                     )
                     device, stream, iq_sample_rate_hz = backend.open_device(
-                        frequency_hz, config["backend_config"],
+                        frequency_hz, config["mode"], config["backend_config"],
+                    )
+                    print(
+                        f"SDR_CONNECT_RATE iq_sample_rate_hz={iq_sample_rate_hz:g}",
+                        file=sys.stderr, flush=True,
                     )
                 except Exception as error:
                     print(f"SDR_DEVICE_OPEN_FAILED error={error}", file=sys.stderr, flush=True)
