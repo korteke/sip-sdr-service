@@ -218,7 +218,7 @@ transmissions.
 | Marine VHF Ch16 — distress/calling (156.800MHz) | `nfm` | `156800` | defaults already match this |
 | Ham/PMR narrowband FM, any frequency | `nfm` | your frequency | adjust `SDR_FM_DEVIATION_HZ`/`SDR_FM_CHANNEL_BANDWIDTH_HZ` if your channel isn't the 5000/16000 Hz default |
 | FM broadcast radio (e.g. 107.6MHz) | `wfm` | `107600` | comment out any `SDR_FM_DEVIATION_HZ`/`SDR_FM_CHANNEL_BANDWIDTH_HZ` left over from `nfm` — see the gotcha above |
-| VHF airband/ATC (e.g. 119.1MHz approach) | `am` | `119100` | set `SDR_AM_CHANNEL_BANDWIDTH_HZ=8330` if your region uses 8.33kHz channel spacing instead of 25kHz |
+| VHF airband distress (e.g. 121.5MHz) | `am` | `121500` | set `SDR_AM_CHANNEL_BANDWIDTH_HZ=8330` if your region uses 8.33kHz channel spacing instead of 25kHz |
 | Ham HF SSB below 10MHz (e.g. 80m) | `lsb` (or `auto`) | `3699` | |
 | Ham HF SSB at/above 10MHz (e.g. 20m) | `usb` (or `auto`) | `14074` | |
 
