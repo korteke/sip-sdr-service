@@ -48,6 +48,17 @@ SDR_DRIVER=$(printf '%s' "$SDR_DRIVER" | tr 'A-Z' 'a-z')
 export SDR_DRIVER
 export SDR_FREQUENCY_KHZ="${SDR_FREQUENCY_KHZ:-3699}"
 export SDR_MODE="${SDR_MODE:-lsb}"
+# Lowercased the same way SDR_DRIVER is above: sdr_stream.py's own
+# env_choice() already lowercases SDR_MODE, so the shell-side SSB gate
+# below (in resolve_entry_context.sh) must match case-insensitively too,
+# or a perfectly valid SDR_MODE=LSB would be wrongly rejected there.
+SDR_MODE=$(printf '%s' "$SDR_MODE" | tr 'A-Z' 'a-z')
+export SDR_MODE
+# Resolves SDR_CALLER_TUNING (validating it, and, when "on", validating
+# SDR_MODE is SSB) into SDR_ENTRY_CONTEXT. Factored into its own file so
+# tests/test_entrypoint.py can exercise this exact logic directly -- see
+# scripts/resolve_entry_context.sh for the full rationale.
+. /opt/sip-sdr-service/resolve_entry_context.sh
 
 case "$SDR_DRIVER" in
     sdrplay|rtlsdr|plutosdr) ;;
@@ -110,6 +121,7 @@ runuser -u asterisk -- sh -c '
     set -eu
     envsubst < /opt/sip-sdr-service/pjsip.conf.template > /etc/asterisk/pjsip.conf
     envsubst < /opt/sip-sdr-service/rtp.conf.template > /etc/asterisk/rtp.conf
+    envsubst '"'"'${SDR_ENTRY_CONTEXT}'"'"' < /opt/sip-sdr-service/extensions.conf.template > /etc/asterisk/extensions.conf
     chmod 0600 /etc/asterisk/pjsip.conf
 '
 

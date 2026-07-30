@@ -37,7 +37,8 @@ venv:
 validate: venv
 	ENV_FILE=.env.example docker compose --env-file .env.example config --quiet
 	sh -n docker-entrypoint.sh
-	$(VENV_PYTHON) -m py_compile scripts/sdr_env.py scripts/sdr_demod.py scripts/sdr_stream.py scripts/sdr_backends/sdrplay.py scripts/sdr_backends/rtlsdr.py scripts/sdr_backends/plutosdr.py scripts/test_sdr.py scripts/healthcheck.py
+	sh -n scripts/resolve_entry_context.sh
+	$(VENV_PYTHON) -m py_compile scripts/sdr_env.py scripts/sdr_demod.py scripts/sdr_stream.py scripts/sdr_tune.py scripts/sdr_backends/sdrplay.py scripts/sdr_backends/rtlsdr.py scripts/sdr_backends/plutosdr.py scripts/test_sdr.py scripts/healthcheck.py
 
 test: validate
 	$(VENV_PYTHON) -m unittest discover -s tests -v

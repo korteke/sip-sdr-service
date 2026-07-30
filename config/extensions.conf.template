@@ -5,10 +5,43 @@ clearglobalvars=no
 
 [incoming-sdr]
 exten => s,1,Set(__CALLED_NUMBER=${EXTEN})
- same => n,Goto(play-sdr,s,1)
+ same => n,Goto(${SDR_ENTRY_CONTEXT},s,1)
 exten => _X!,1,Set(__CALLED_NUMBER=${EXTEN})
- same => n,Goto(play-sdr,s,1)
+ same => n,Goto(${SDR_ENTRY_CONTEXT},s,1)
 exten => _[+*#0-9A-Za-z].,1,Set(__CALLED_NUMBER=${EXTEN})
+ same => n,Goto(${SDR_ENTRY_CONTEXT},s,1)
+
+[tune-menu]
+exten => s,1,Answer()
+ same => n,Background(custom/sdr-main-menu)
+ same => n,Set(CURRENT_FREQ_KHZ=${FILE(/run/sip-sdr/current-frequency-khz,0,24)})
+ same => n,GotoIf($["${CURRENT_FREQ_KHZ}" = ""]?menu)
+ same => n,Set(SAY_DTMF_INTERRUPT=true)
+ same => n,Background(custom/sdr-current-frequency)
+ same => n,SayNumber(${CURRENT_FREQ_KHZ})
+ same => n,Background(custom/sdr-kilohertz)
+ same => n,Set(SAY_DTMF_INTERRUPT=false)
+ same => n(menu),WaitExten(5)
+exten => 1,1,Goto(tune-sdr,s,1)
+exten => 2,1,Goto(play-sdr,s,1)
+exten => i,1,Goto(tune-menu,s,1)
+exten => t,1,Goto(play-sdr,s,1)
+
+[tune-sdr]
+exten => s,1,Set(TUNE_ATTEMPTS=0)
+ same => n(retry),Set(TUNE_ATTEMPTS=$[${TUNE_ATTEMPTS} + 1])
+ same => n,Read(FREQ_KHZ,custom/sdr-enter-frequency,5,,1,10)
+ same => n,GotoIf($["${FREQ_KHZ}" = ""]?invalid)
+ same => n,GotoIf($[${FREQ_KHZ} >= 1800 & ${FREQ_KHZ} <= 29999]?valid:invalid)
+ same => n(invalid),Playback(custom/sdr-invalid-frequency)
+ same => n,GotoIf($[${TUNE_ATTEMPTS} < 3]?retry:fallback)
+ same => n(fallback),Playback(custom/sdr-fallback-listen)
+ same => n,Goto(play-sdr,s,1)
+ same => n(valid),System(python3 /opt/sip-sdr-service/sdr_tune.py ${FREQ_KHZ})
+ same => n,GotoIf($["${SYSTEMSTATUS}" != "SUCCESS"]?invalid)
+ same => n,Playback(custom/sdr-tuning-to)
+ same => n,SayNumber(${FREQ_KHZ})
+ same => n,Playback(custom/sdr-kilohertz)
  same => n,Goto(play-sdr,s,1)
 
 [play-sdr]

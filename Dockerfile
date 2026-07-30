@@ -68,15 +68,22 @@ RUN if [ -f /tmp/vendor-stage/sdrplay_api.run ]; then \
     && rm -rf /tmp/vendor-stage
 
 COPY config/asterisk.conf /etc/asterisk/asterisk.conf
-COPY config/extensions.conf /etc/asterisk/extensions.conf
+COPY config/extensions.conf.template /opt/sip-sdr-service/extensions.conf.template
 COPY config/logger.conf /etc/asterisk/logger.conf
 COPY config/modules.conf /etc/asterisk/modules.conf
 COPY config/musiconhold.conf /etc/asterisk/musiconhold.conf
 COPY config/pjsip.conf.template /opt/sip-sdr-service/pjsip.conf.template
 COPY config/rtp.conf.template /opt/sip-sdr-service/rtp.conf.template
+# astdatadir is set to /usr/share/asterisk in config/asterisk.conf (Debian/
+# Ubuntu package layout splits sounds out from astvarlibdir), so that's
+# where Asterisk actually resolves "custom/..." sound references from --
+# not /var/lib/asterisk/sounds, which Asterisk never searches.
+COPY config/sounds/custom/ /usr/share/asterisk/sounds/custom/
 COPY scripts/sdr_env.py /opt/sip-sdr-service/sdr_env.py
 COPY scripts/sdr_demod.py /opt/sip-sdr-service/sdr_demod.py
 COPY scripts/sdr_stream.py /opt/sip-sdr-service/sdr_stream.py
+COPY scripts/sdr_tune.py /opt/sip-sdr-service/sdr_tune.py
+COPY scripts/resolve_entry_context.sh /opt/sip-sdr-service/resolve_entry_context.sh
 COPY scripts/sdr_backends/ /opt/sip-sdr-service/sdr_backends/
 COPY scripts/test_sdr.py /usr/local/bin/test-sdr-receiver
 COPY scripts/healthcheck.py /usr/local/bin/sip-sdr-healthcheck
@@ -88,6 +95,7 @@ COPY docker-entrypoint.sh /usr/local/bin/sip-sdr-entrypoint
 # to keep in sync.
 RUN chmod 0755 \
         /opt/sip-sdr-service/sdr_stream.py \
+        /opt/sip-sdr-service/sdr_tune.py \
         /usr/local/bin/test-sdr-receiver \
         /usr/local/bin/sip-sdr-healthcheck \
         /usr/local/bin/sip-sdr-entrypoint \

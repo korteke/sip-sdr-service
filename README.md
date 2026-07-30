@@ -228,6 +228,26 @@ boundary. Every row here is real-hardware verified (via PlutoSDR) except
 the HF SSB examples, which predate this project's SDR-agnostic backend
 support.
 
+### Caller-driven frequency tuning (optional IVR)
+
+By default, `SDR_FREQUENCY_KHZ` and `SDR_MODE` are set once at startup and never change. Set `SDR_CALLER_TUNING=on` in `.env` to enable an optional interactive voice response (IVR) menu that lets callers retune the receiver by phone. This feature is restricted to ham HF SSB only (`lsb`/`usb`/`auto` mode) and works only with single-sideband modulation modes, not with FM or AM.
+
+**Important:** There is only one physical SDR tuner, so retuning is a shared party-line — whoever dials a new frequency changes what all currently-connected listeners hear.
+
+Caller-driven tuning uses seven custom prompt audio files, already committed in `config/sounds/custom/` so the feature works out of the box — re-record or re-generate them with your own TTS tooling if you want to change the wording or language. All are 8kHz mono WAV files (or any format Asterisk's sound-file conventions accept):
+
+- **`sdr-main-menu`** — "Please select what you want to do. Press 1 to tune the radio to a ham frequency. Press 2 to listen to the currently tuned frequency."
+- **`sdr-current-frequency`** — "Current frequency is" (plays automatically when a caller enters the tune menu, right after the main menu, before the spoken frequency number and `sdr-kilohertz`).
+- **`sdr-enter-frequency`** — "Please enter the frequency in kilohertz, followed by the pound key."
+- **`sdr-invalid-frequency`** — "That frequency is not valid. Please enter a frequency between 1800 and 29999 kilohertz."
+- **`sdr-tuning-to`** — "Tuning to" (this phrase is followed by the frequency number and `sdr-kilohertz`).
+- **`sdr-kilohertz`** — "kilohertz".
+- **`sdr-fallback-listen`** — "We could not understand that. Switching to listen-only mode."
+
+Frequency entry is limited to 1800–29999 kHz (ham HF SSB band), is terminated with the `#` key, and supports up to 3 input attempts before falling back to listen-only mode.
+
+Build and deploy as usual (`make up`). If you replace a prompt file and it's missing or unreadable at build/run time, the build still succeeds but callers see an Asterisk warning message instead of the prompt. With `SDR_CALLER_TUNING=off` (the default), this feature is completely disabled and the receiver behaves as before. Enabling it also requires `SDR_MODE` to be `lsb`, `usb`, or `auto` — `docker-entrypoint.sh` refuses to start otherwise.
+
 The project is SIP-provider independent. Set `SIP_SERVER`, the account
 fields, ports, and any external address to values supplied by your own
 provider and network administrator.
