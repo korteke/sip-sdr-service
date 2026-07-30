@@ -234,6 +234,46 @@ By default, `SDR_FREQUENCY_KHZ` and `SDR_MODE` are set once at startup and never
 
 **Important:** There is only one physical SDR tuner, so retuning is a shared party-line — whoever dials a new frequency changes what all currently-connected listeners hear.
 
+Example `.env`:
+
+```
+SDR_MODE=auto
+SDR_FREQUENCY_KHZ=3699
+SDR_CALLER_TUNING=on
+```
+
+Example call flow, starting from the settings above:
+
+1. Call in. You hear "Please select what you want to do. Press 1 to tune the radio to a ham frequency. Press 2 to listen to the currently tuned frequency."
+2. Press `1`.
+3. You hear "Please enter the frequency in kilohertz, followed by the pound key."
+4. Dial `14074#` (20m USB — any value 1800–29999 works, and can be on either side of the 10MHz LSB/USB boundary regardless of the current frequency).
+5. You hear "Tuning to fourteen thousand and seventy four kilohertz" and are then connected — now listening on 20m USB. Anyone else already on the call hears the same switch happen live, with no dropout.
+6. A caller who instead presses `2` (or waits out the menu without pressing anything) hears "Current frequency is..." followed by whatever is currently tuned, then joins listening — no tuning capability, just like `SDR_CALLER_TUNING=off`'s normal behavior.
+
+An out-of-range entry (e.g. `99999#`) plays "That frequency is not valid..." and reprompts, up to 3 attempts before falling back to listen-only automatically.
+
+```mermaid
+flowchart TD
+    A[Incoming call] --> B{SDR_CALLER_TUNING}
+    B -- off --> P["play-sdr: Answer, join shared MusicOnHold"]
+    B -- on --> M["tune-menu: play main menu, then current frequency"]
+    M -- "press 1" --> T["tune-sdr: Read frequency + #"]
+    M -- "press 2" --> P
+    M -- "timeout / no input" --> P
+    M -- "invalid digit" --> M
+    T --> V{"1800-29999 kHz?"}
+    V -- yes --> W["Write frequency to control file<br/>Confirm: Tuning to N kilohertz"]
+    W --> P
+    V -- no --> I["Play: invalid frequency"]
+    I --> R{"attempts < 3?"}
+    R -- yes --> T
+    R -- no --> F["Play: fallback to listen-only"]
+    F --> P
+    P --> H[Caller hangs up]
+    H --> L["call-logging: CALL_END"]
+```
+
 Caller-driven tuning uses seven custom prompt audio files, already committed in `config/sounds/custom/` so the feature works out of the box — re-record or re-generate them with your own TTS tooling if you want to change the wording or language. All are 8kHz mono WAV files (or any format Asterisk's sound-file conventions accept):
 
 - **`sdr-main-menu`** — "Please select what you want to do. Press 1 to tune the radio to a ham frequency. Press 2 to listen to the currently tuned frequency."
